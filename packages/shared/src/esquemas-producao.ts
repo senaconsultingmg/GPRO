@@ -223,3 +223,33 @@ export const esquemaOrdemExtrusao = z.object({
   dataFimPrevista: dataCivil.nullish().transform((v) => v ?? null),
   observacao: textoOpcional(1000),
 });
+
+// ---------- Fase 4: correções, aprovações, apuração ----------
+const parecerOpcional = textoOpcional(1000);
+
+/**
+ * Solicitação de correção (RN-09): "CORRIGIR" traz os valores corretos (mesmo tipo de lançamento,
+ * sem identificador); "ANULAR" marca o lançamento como incorreto sem substituto.
+ */
+export const esquemaSolicitarCorrecao = z
+  .object({
+    eventoId: id,
+    tipo: z.enum(['CORRIGIR', 'ANULAR']),
+    justificativa: z.string().trim().min(5, 'Explique o motivo da correção.').max(1000),
+    /** Valores corretos (formato de lançamento, sem "id"); saldo solto: { quantidade }. */
+    valores: z.record(z.string(), z.unknown()).nullish(),
+  })
+  .refine((c) => c.tipo === 'ANULAR' || !!c.valores, {
+    message: 'Informe os valores corretos.',
+    path: ['valores'],
+  });
+export type SolicitarCorrecao = z.infer<typeof esquemaSolicitarCorrecao>;
+
+export const esquemaDecisao = z.object({ parecer: parecerOpcional });
+export const esquemaRejeicao = z.object({
+  parecer: z.string().trim().min(3, 'Informe o parecer.').max(1000),
+});
+export const esquemaEstorno = z.object({
+  leitura: z.string().trim().min(1, 'Leia a etiqueta.').max(200),
+  motivo: z.string().trim().min(5, 'Informe o motivo do estorno.').max(500),
+});

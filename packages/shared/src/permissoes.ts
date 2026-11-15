@@ -57,6 +57,15 @@ export const PERMISSOES = {
   'materiaprima.escrever': ['MATERIA_PRIMA'],
   'estoque.ler': ['ESTOQUE', 'PCP', 'SUPERUSUARIO', 'MATERIA_PRIMA'],
   'estoque.receber': ['ESTOQUE'],
+  // Fase 4
+  /** Apontador (nos turnos que abriu) e líder solicitam correção (RN-09). */
+  'correcoes.solicitar': ['APONTADOR', 'LIDER'],
+  'aprovacoes.ler': ['LIDER', 'PCP', 'SUPERUSUARIO'],
+  /** Líder decide pendências e aprova o relatório do turno. */
+  'aprovacoes.decidir': ['LIDER'],
+  'apuracao.executar': ['PCP'],
+  'exportacao.executar': ['PCP'],
+  'exportacao.ler': ['PCP', 'SUPERUSUARIO'],
 } as const satisfies Record<string, Perfil[]>;
 
 export type Permissao = keyof typeof PERMISSOES;

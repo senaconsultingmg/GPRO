@@ -123,6 +123,13 @@ export async function carregarDadosExemplo(
       equipe: 'A',
     },
     {
+      chave: 'lider2',
+      nome: 'Lívia Líder',
+      login: 'lider2@exemplo.com.br',
+      perfis: ['LIDER' as const],
+      equipe: 'B',
+    },
+    {
       chave: 'estoque',
       nome: 'Ester Estoque',
       login: 'estoque@exemplo.com.br',

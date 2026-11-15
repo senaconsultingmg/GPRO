@@ -224,6 +224,24 @@ export const ROTULO_TIPO_VOLUME: Record<TipoVolumeExtrusao, string> = {
 export const LAYOUTS_IMPORTACAO = ['IMPORTACAO_ORDENS', 'IMPORTACAO_PRODUTOS'] as const;
 export type LayoutImportacao = (typeof LAYOUTS_IMPORTACAO)[number];
 
+// ---------------- Fase 4: exportação, correções ----------------
+
+export const LAYOUTS_EXPORTACAO = [
+  'EXPORTACAO_PRODUCAO',
+  'EXPORTACAO_CONSUMO',
+  'EXPORTACAO_PERDAS',
+  'EXPORTACAO_ETIQUETAS',
+] as const;
+export type LayoutExportacao = (typeof LAYOUTS_EXPORTACAO)[number];
+export type LayoutExcel = LayoutImportacao | LayoutExportacao;
+
+export const TIPOS_CORRECAO = ['CORRIGIR', 'ANULAR'] as const;
+export type TipoCorrecao = (typeof TIPOS_CORRECAO)[number];
+export const ROTULO_TIPO_CORRECAO: Record<TipoCorrecao, string> = {
+  CORRIGIR: 'Corrigir valores',
+  ANULAR: 'Anular lançamento',
+};
+
 // ---------------- Fase 3: etiquetas, lotes e estoque ----------------
 
 export const SITUACOES_ETIQUETA = ['EMITIDA', 'RECEBIDA', 'CONSUMIDA', 'EXPORTADA', 'CANCELADA'] as const;

@@ -12,6 +12,7 @@ import { AuditoriaService } from '../auditoria/auditoria.service.js';
 import { conflito, ErroNegocio, naoEncontrado } from '../comum/erros.js';
 import type { UsuarioAutenticado } from '../comum/decoradores.js';
 import { emitirEtiquetas, proximoNumeroLote, saldosLote } from '../etiquetas/emissao.js';
+import { estornarRecebimento } from '../estoque/estorno.js';
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
@@ -371,7 +372,7 @@ export class MateriaPrimaService {
     if (!codigo) throw new ErroNegocio('Leitura inválida.');
     const e = await this.prisma.etiqueta.findUnique({
       where: { codigo },
-      include: { lote: true, recebimento: true },
+      include: { lote: true, recebimentos: { where: { estornadoEm: null } } },
     });
     if (!e) throw naoEncontrado(`Etiqueta ${codigo}`);
     const devolucao =
@@ -381,7 +382,8 @@ export class MateriaPrimaService {
         'Só etiquetas de devolução ou de extrusão são recebidas pelo setor de matéria-prima.',
       );
     if (e.situacao === 'CANCELADA') throw conflito(`A etiqueta ${codigo} está cancelada.`);
-    if (e.situacao !== 'EMITIDA' || e.recebimento) throw conflito(`A etiqueta ${codigo} já foi recebida.`);
+    if (e.situacao !== 'EMITIDA' || e.recebimentos.length)
+      throw conflito(`A etiqueta ${codigo} já foi recebida.`);
     return this.prisma.$transaction(async (tx) => {
       await tx.recebimento.create({ data: { etiquetaId: e.id, localEstoqueId, recebidoPorId: usuario.id } });
       await tx.movimentoEstoque.create({
@@ -408,6 +410,16 @@ export class MateriaPrimaService {
         novo: { situacao: 'RECEBIDA', localEstoqueId },
       });
       return atualizada;
+    });
+  }
+
+  /** Estorna o recebimento de etiqueta de devolução/extrusão (antes de corrigir o lançamento). */
+  estornar(leitura: string, motivo: string, usuario: UsuarioAutenticado) {
+    return estornarRecebimento(this.prisma, this.auditoria, {
+      leitura,
+      motivo,
+      usuario,
+      setor: 'MATERIA_PRIMA',
     });
   }
 

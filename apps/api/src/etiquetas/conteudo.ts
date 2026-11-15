@@ -31,7 +31,11 @@ export const INCLUIR_ETIQUETA = {
   },
   responsavel: { select: { nome: true, login: true } },
   localEstoque: { select: { id: true, nome: true } },
-  recebimento: {
+  /** Recebimento vigente (não estornado). */
+  recebimentos: {
+    where: { estornadoEm: null },
+    orderBy: { recebidoEm: 'desc' },
+    take: 1,
     include: { recebidoPor: { select: { nome: true } }, localEstoque: { select: { nome: true } } },
   },
 } satisfies Prisma.EtiquetaInclude;

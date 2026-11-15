@@ -63,8 +63,9 @@ export class TurnosController {
     @Query('situacao') situacao?: string,
     @Query('data') data?: string,
     @Query('apontadorId') apontadorId?: string,
+    @UsuarioAtual() usuario?: UsuarioAutenticado,
   ) {
-    return this.servico.listar({ situacao, data, apontadorId });
+    return this.servico.listar({ situacao, data, apontadorId }, usuario);
   }
 
   @Post()
@@ -79,13 +80,15 @@ export class TurnosController {
 
   @Get(':id')
   @Permissao('turnos.ler')
-  detalhe(@Param('id', ParseUUIDPipe) id: string) {
+  async detalhe(@Param('id', ParseUUIDPipe) id: string, @UsuarioAtual() usuario: UsuarioAutenticado) {
+    await this.servico.exigirVisivel(id, usuario);
     return this.servico.detalhe(id);
   }
 
   @Get(':id/relatorio')
   @Permissao('turnos.ler')
-  gerarRelatorio(@Param('id', ParseUUIDPipe) id: string) {
+  async gerarRelatorio(@Param('id', ParseUUIDPipe) id: string, @UsuarioAtual() usuario: UsuarioAutenticado) {
+    await this.servico.exigirVisivel(id, usuario);
     return this.relatorio.gerar(id);
   }
 

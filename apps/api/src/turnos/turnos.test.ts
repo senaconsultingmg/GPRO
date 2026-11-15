@@ -20,6 +20,7 @@ describe('Turno de apontamento — fluxo completo', () => {
   let apontador: string;
   let apontador2: string;
   let pcp: string;
+  let lider: string;
   const id: Record<string, string> = {};
   const base = Date.now();
   const em = (horas: number) => new Date(base + horas * H).toISOString();
@@ -55,6 +56,7 @@ describe('Turno de apontamento — fluxo completo', () => {
     const t = await tokensPorPerfil(ctx);
     apontador = t.APONTADOR;
     pcp = t.PCP;
+    lider = t.LIDER;
     apontador2 = await entrar(ctx, 'apontador2@exemplo.com.br');
     for (const m of await ctx.prisma.maquina.findMany()) id[m.codigo] = m.id;
     for (const p of await ctx.prisma.produto.findMany()) id[p.codigo] = p.id;
@@ -463,7 +465,7 @@ describe('Turno de apontamento — fluxo completo', () => {
   });
 
   it('RN-13: relatório do turno com produção, meta, perdas, consumo, paradas, cavidades, OEE, PH e pendências', async () => {
-    const r = await ctx.http().get(`/api/turnos/${turno1}/relatorio`).set(auth(pcp));
+    const r = await ctx.http().get(`/api/turnos/${turno1}/relatorio`).set(auth(lider));
     expect(r.status).toBe(200);
     const m = r.body.maquinas[0];
     expect(m.maquina.codigo).toBe('INJ-01');

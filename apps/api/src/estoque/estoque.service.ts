@@ -8,6 +8,7 @@ import { conflito, ErroNegocio, naoEncontrado } from '../comum/erros.js';
 import type { UsuarioAutenticado } from '../comum/decoradores.js';
 import { INCLUIR_ETIQUETA } from '../etiquetas/conteudo.js';
 import { saldosLote, saldosProduto } from '../etiquetas/emissao.js';
+import { estornarRecebimento } from './estorno.js';
 
 /** Recebimento no estoque por leitura de etiqueta, locais e saldo (RN-12). */
 @Injectable()
@@ -29,8 +30,8 @@ export class EstoqueService {
       throw new ErroNegocio(`A etiqueta ${codigo} não é de produto acabado ou semiacabado.`);
     if (e.situacao === 'CANCELADA')
       throw conflito(`A etiqueta ${codigo} está cancelada e não pode ser recebida.`);
-    if (e.situacao !== 'EMITIDA' || e.recebimento) {
-      const r = e.recebimento;
+    if (e.situacao !== 'EMITIDA' || e.recebimentos.length) {
+      const r = e.recebimentos[0];
       throw conflito(
         r
           ? `A etiqueta ${codigo} já foi recebida em ${formatarDataHora(r.recebidoEm)} por ${r.recebidoPor.nome} (${r.localEstoque.nome}).`
@@ -71,6 +72,11 @@ export class EstoqueService {
       });
       return tx.etiqueta.findUniqueOrThrow({ where: { id: e.id }, include: INCLUIR_ETIQUETA });
     });
+  }
+
+  /** Estorna o recebimento de uma etiqueta de produto (antes de corrigir o lançamento que a gerou). */
+  estornar(leitura: string, motivo: string, usuario: UsuarioAutenticado) {
+    return estornarRecebimento(this.prisma, this.auditoria, { leitura, motivo, usuario, setor: 'ESTOQUE' });
   }
 
   /** Lista da tela de recebimento conforme o parâmetro `visao_recebimento` (pendentes, recebidas ou ambas). */

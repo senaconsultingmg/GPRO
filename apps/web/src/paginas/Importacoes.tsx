@@ -17,7 +17,12 @@ import {
 } from '@mantine/core';
 import { IconCheck, IconDownload, IconFileSpreadsheet, IconSettings, IconUpload } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatarDataHora, type Permissao } from '@apontamento/shared';
+import {
+  formatarDataHora,
+  type LayoutExcel,
+  type LayoutImportacao,
+  type Permissao,
+} from '@apontamento/shared';
 import { api } from '../api/cliente';
 import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
 import { AlertaErroApi, notificarErro, notificarSucesso } from '../componentes/utilitarios';
@@ -30,7 +35,8 @@ interface CampoLayout {
   obrigatorio: boolean;
 }
 interface Layout {
-  layout: 'IMPORTACAO_ORDENS' | 'IMPORTACAO_PRODUTOS';
+  layout: LayoutExcel;
+  tipo: 'IMPORTACAO' | 'EXPORTACAO';
   titulo: string;
   campos: CampoLayout[];
 }
@@ -56,7 +62,7 @@ interface RegistroImportacao {
   usuario: { nome: string };
 }
 
-const ROTAS: Record<Layout['layout'], { rota: string; permissao: Permissao }> = {
+const ROTAS: Record<LayoutImportacao, { rota: string; permissao: Permissao }> = {
   IMPORTACAO_ORDENS: { rota: 'ordens', permissao: 'ordens.escrever' },
   IMPORTACAO_PRODUTOS: { rota: 'produtos', permissao: 'produtos.importar' },
 };
@@ -65,7 +71,7 @@ function CartaoImportacao({ layout }: { layout: Layout }) {
   const cliente = useQueryClient();
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [resultado, setResultado] = useState<Resultado | null>(null);
-  const { rota } = ROTAS[layout.layout];
+  const { rota } = ROTAS[layout.layout as LayoutImportacao];
   const enviar = useMutation({
     mutationFn: (simular: boolean) =>
       api.enviarArquivo<Resultado>(
@@ -235,7 +241,7 @@ export function PaginaImportacoes() {
       <AlertaErroApi erro={layouts.error} />
       <SimpleGrid cols={{ base: 1, md: 2 }}>
         {layouts.data
-          ?.filter((l) => pode(ROTAS[l.layout].permissao))
+          ?.filter((l) => l.tipo === 'IMPORTACAO' && pode(ROTAS[l.layout as LayoutImportacao].permissao))
           .map((l) => (
             <CartaoImportacao key={l.layout} layout={l} />
           ))}
@@ -250,6 +256,7 @@ export function PaginaImportacoes() {
               onClick={() => setMapeando(l)}
             >
               Mapear colunas — {l.titulo}
+              {l.tipo === 'EXPORTACAO' ? ' (exportação)' : ''}
             </Button>
           ))}
         </Group>

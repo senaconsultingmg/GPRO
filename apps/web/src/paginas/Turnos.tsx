@@ -6,6 +6,7 @@ import {
   Card,
   Group,
   List,
+  Modal,
   Paper,
   ScrollArea,
   Select,
@@ -29,6 +30,10 @@ import {
   type Unidade,
 } from '@apontamento/shared';
 import { api } from '../api/cliente';
+import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
+import { ListaLancamentos } from './apontamento/ListaLancamentos';
+import type { TurnoDetalhe } from './apontamento/tipos';
+import { AprovarRelatorio } from './Aprovacoes';
 import { AlertaErroApi, fmtNumero } from '../componentes/utilitarios';
 
 interface TurnoLista {
@@ -212,6 +217,8 @@ function Indicador({ rotulo, valor, destaque }: { rotulo: string; valor: string;
 /** Relatório do turno (RN-13). */
 export function PaginaRelatorioTurno() {
   const { id } = useParams();
+  const { pode } = useAutenticacao();
+  const [aprovando, setAprovando] = useState(false);
   const {
     data: r,
     error,
@@ -220,8 +227,17 @@ export function PaginaRelatorioTurno() {
     queryKey: ['turno', id, 'relatorio'],
     queryFn: () => api.get<Relatorio>(`/turnos/${id}/relatorio`),
   });
+  const detalhe = useQuery({
+    queryKey: ['turno', id],
+    queryFn: () =>
+      api.get<TurnoDetalhe & { parecerDevolucao: string | null; devolvidoEm: string | null }>(
+        `/turnos/${id}`,
+      ),
+    enabled: !!r,
+  });
   if (isLoading) return <Text>Carregando…</Text>;
   if (!r) return <AlertaErroApi erro={error} />;
+  const d = detalhe.data;
   return (
     <Stack>
       <Group justify="space-between">
@@ -230,16 +246,31 @@ export function PaginaRelatorioTurno() {
             Relatório do turno — {r.turno.horario.nome} {formatarDataCivil(r.turno.data)} · Equipe{' '}
             {r.turno.equipe}
           </Title>
-          <Text c="dimmed">
+          <Text c="dimmed" component="div">
             Apontador {r.turno.apontador} · aberto {formatarDataHora(r.turno.abertoEm)}
             {r.turno.fechadoEm ? ` · fechado ${formatarDataHora(r.turno.fechadoEm)}` : ''} ·{' '}
             <Badge>{ROTULO_SITUACAO_TURNO[r.turno.situacao]}</Badge>
           </Text>
         </div>
-        <Button variant="default" leftSection={<IconPrinter size={18} />} onClick={() => window.print()}>
-          Imprimir
-        </Button>
+        <Group>
+          {r.turno.situacao === 'FECHADO' && pode('aprovacoes.decidir') && (
+            <Button color="green" disabled={r.pendencias.length > 0} onClick={() => setAprovando(true)}>
+              Aprovar relatório
+            </Button>
+          )}
+          <Button variant="default" leftSection={<IconPrinter size={18} />} onClick={() => window.print()}>
+            Imprimir
+          </Button>
+        </Group>
       </Group>
+      {d?.parecerDevolucao && r.turno.situacao === 'FECHADO' && (
+        <Alert color="orange" title={`Devolvido pelo PCP em ${formatarDataHora(d.devolvidoEm)}`}>
+          {d.parecerDevolucao}
+        </Alert>
+      )}
+      {r.turno.situacao === 'EXPORTADO' && (
+        <Alert color="gray">Turno exportado ao ERP: não aceita nenhuma alteração.</Alert>
+      )}
       {r.parcial && <Alert color="blue">Turno aberto: valores parciais até agora.</Alert>}
 
       {r.maquinas.map((m) => (
@@ -489,7 +520,28 @@ export function PaginaRelatorioTurno() {
             ))}
           </List>
         )}
+        {r.pendencias.length > 0 && pode('aprovacoes.decidir') && (
+          <Button mt="sm" variant="light" component={Link} to="/aprovacoes" w="fit-content">
+            Decidir pendências
+          </Button>
+        )}
       </Card>
+
+      {d && (
+        <Card withBorder>
+          <Title order={4} mb="xs">
+            Lançamentos
+          </Title>
+          <ListaLancamentos turno={d} />
+        </Card>
+      )}
+      <Modal
+        opened={aprovando}
+        onClose={() => setAprovando(false)}
+        title={<Text fw={700}>Aprovar relatório</Text>}
+      >
+        {aprovando && <AprovarRelatorio turnoId={r.turno.id} aoConcluir={() => setAprovando(false)} />}
+      </Modal>
     </Stack>
   );
 }

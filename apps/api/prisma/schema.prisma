@@ -175,6 +175,9 @@ enum TipoMovimento {
   TRANSFERENCIA_LOCAL
   RECEBIMENTO_PRODUTO
   CONSUMO_SEMIACABADO
+  ESTORNO_RECEBIMENTO
+  ESTORNO_CORRECAO
+  BAIXA_EXPORTACAO
 }
 
 enum TipoParametro {
@@ -212,12 +215,13 @@ model Usuario {
   aprovacoesDecididas   Aprovacao[]        @relation("AprovacaoAprovador")
   importacoes           Importacao[]
 
-  etiquetas    Etiqueta[]
-  lotesCriados LoteMaterial[]
-  misturas     Mistura[]
-  movimentos   MovimentoEstoque[]
-  recebimentos Recebimento[]
-  impressoes   ImpressaoEtiqueta[]
+  etiquetas       Etiqueta[]
+  lotesCriados    LoteMaterial[]
+  misturas        Mistura[]
+  movimentos      MovimentoEstoque[]
+  recebimentos    Recebimento[]
+  impressoes      ImpressaoEtiqueta[]
+  loteExportacaos LoteExportacao[]
 
   @@map("usuario")
 }
@@ -649,17 +653,26 @@ model RodadaOp {
 }
 
 model TurnoApontamento {
-  id             String        @id @default(uuid()) @db.Uuid
-  apontadorId    String        @map("apontador_id") @db.Uuid
-  data           DateTime      @db.Date
-  horarioTurnoId String        @map("horario_turno_id") @db.Uuid
-  equipeId       String        @map("equipe_id") @db.Uuid
-  inicioNominal  DateTime      @map("inicio_nominal") @db.Timestamptz(3)
-  fimNominal     DateTime      @map("fim_nominal") @db.Timestamptz(3)
-  abertoEm       DateTime      @default(now()) @map("aberto_em") @db.Timestamptz(3)
-  fechadoEm      DateTime?     @map("fechado_em") @db.Timestamptz(3)
-  situacao       SituacaoTurno @default(ABERTO)
-  dispositivo    String
+  id               String        @id @default(uuid()) @db.Uuid
+  apontadorId      String        @map("apontador_id") @db.Uuid
+  data             DateTime      @db.Date
+  horarioTurnoId   String        @map("horario_turno_id") @db.Uuid
+  equipeId         String        @map("equipe_id") @db.Uuid
+  inicioNominal    DateTime      @map("inicio_nominal") @db.Timestamptz(3)
+  fimNominal       DateTime      @map("fim_nominal") @db.Timestamptz(3)
+  abertoEm         DateTime      @default(now()) @map("aberto_em") @db.Timestamptz(3)
+  fechadoEm        DateTime?     @map("fechado_em") @db.Timestamptz(3)
+  situacao         SituacaoTurno @default(ABERTO)
+  dispositivo      String
+  aprovadoEm       DateTime?     @map("aprovado_em") @db.Timestamptz(3)
+  aprovadoPorId    String?       @map("aprovado_por_id") @db.Uuid
+  apuradoEm        DateTime?     @map("apurado_em") @db.Timestamptz(3)
+  apuradoPorId     String?       @map("apurado_por_id") @db.Uuid
+  exportadoEm      DateTime?     @map("exportado_em") @db.Timestamptz(3)
+  exportacaoId     String?       @map("exportacao_id") @db.Uuid
+  /// Última devolução do PCP ao líder (divergência na apuração).
+  devolvidoEm      DateTime?     @map("devolvido_em") @db.Timestamptz(3)
+  parecerDevolucao String?       @map("parecer_devolucao")
 
   apontador    Usuario        @relation(fields: [apontadorId], references: [id])
   horarioTurno HorarioTurno   @relation(fields: [horarioTurnoId], references: [id])
@@ -705,6 +718,8 @@ model DivisaoOp {
   phReferencia     Float    @map("ph_referencia")
   meta             Float
   criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  /// Lote de exportação em que consumo, perdas e refugo da divisão foram enviados ao ERP.
+  exportacaoId     String?  @map("exportacao_id") @db.Uuid
 
   ordem     OrdemProducao    @relation(fields: [ordemId], references: [id])
   rodadaOp  RodadaOp         @relation(fields: [rodadaOpId], references: [id])
@@ -759,17 +774,22 @@ model Evento {
 
 /// Pendências para o líder (Fase 2 só registra; a decisão vem na Fase 4).
 model Aprovacao {
-  id            String            @id @default(uuid()) @db.Uuid
-  tipo          TipoAprovacao
-  turnoId       String            @map("turno_id") @db.Uuid
-  eventoId      String?           @map("evento_id") @db.Uuid
-  descricao     String
-  solicitanteId String            @map("solicitante_id") @db.Uuid
-  aprovadorId   String?           @map("aprovador_id") @db.Uuid
-  situacao      SituacaoAprovacao @default(PENDENTE)
-  parecer       String?
-  criadoEm      DateTime          @default(now()) @map("criado_em") @db.Timestamptz(3)
-  decididoEm    DateTime?         @map("decidido_em") @db.Timestamptz(3)
+  id                String            @id @default(uuid()) @db.Uuid
+  tipo              TipoAprovacao
+  turnoId           String            @map("turno_id") @db.Uuid
+  eventoId          String?           @map("evento_id") @db.Uuid
+  descricao         String
+  solicitanteId     String            @map("solicitante_id") @db.Uuid
+  aprovadorId       String?           @map("aprovador_id") @db.Uuid
+  situacao          SituacaoAprovacao @default(PENDENTE)
+  parecer           String?
+  criadoEm          DateTime          @default(now()) @map("criado_em") @db.Timestamptz(3)
+  decididoEm        DateTime?         @map("decidido_em") @db.Timestamptz(3)
+  /// Correção (RN-09): CORRIGIR ou ANULAR, justificativa e valores corretos propostos.
+  correcaoTipo      String?           @map("correcao_tipo")
+  justificativa     String?
+  valoresCorrecao   Json?             @map("valores_correcao")
+  eventoCorretivoId String?           @map("evento_corretivo_id") @db.Uuid
 
   turno       TurnoApontamento @relation(fields: [turnoId], references: [id])
   evento      Evento?          @relation(fields: [eventoId], references: [id])
@@ -850,17 +870,21 @@ model Etiqueta {
   /// Campos impressos (origem, destino, operador, composição...).
   dados              Json             @default("{}")
 
-  dispositivo  Dispositivo         @relation(fields: [dispositivoId], references: [id])
-  produto      Produto             @relation(fields: [produtoId], references: [id])
-  lote         LoteMaterial?       @relation(fields: [loteId], references: [id])
-  evento       Evento?             @relation(fields: [eventoId], references: [id])
-  divisao      DivisaoOp?          @relation(fields: [divisaoId], references: [id])
-  turno        TurnoApontamento?   @relation(fields: [turnoId], references: [id])
-  responsavel  Usuario             @relation(fields: [responsavelId], references: [id])
-  localEstoque LocalEstoque?       @relation(fields: [localEstoqueId], references: [id])
-  impressoes   ImpressaoEtiqueta[]
-  recebimento  Recebimento?
-  movimentos   MovimentoEstoque[]
+  dispositivo        Dispositivo         @relation(fields: [dispositivoId], references: [id])
+  produto            Produto             @relation(fields: [produtoId], references: [id])
+  lote               LoteMaterial?       @relation(fields: [loteId], references: [id])
+  evento             Evento?             @relation(fields: [eventoId], references: [id])
+  divisao            DivisaoOp?          @relation(fields: [divisaoId], references: [id])
+  turno              TurnoApontamento?   @relation(fields: [turnoId], references: [id])
+  responsavel        Usuario             @relation(fields: [responsavelId], references: [id])
+  localEstoque       LocalEstoque?       @relation(fields: [localEstoqueId], references: [id])
+  impressoes         ImpressaoEtiqueta[]
+  recebimentos       Recebimento[]
+  exportacaoId       String?             @map("exportacao_id") @db.Uuid
+  canceladaEm        DateTime?           @map("cancelada_em") @db.Timestamptz(3)
+  motivoCancelamento String?             @map("motivo_cancelamento")
+  exportacao         LoteExportacao?     @relation(fields: [exportacaoId], references: [id])
+  movimentos         MovimentoEstoque[]
 
   @@unique([dispositivoId, sequencia])
   @@index([tipo, situacao])
@@ -976,15 +1000,52 @@ model MovimentoEstoque {
 
 /// Recebimento de etiqueta no estoque (produto acabado/semiacabado) ou no setor de matéria-prima.
 model Recebimento {
-  id             String   @id @default(uuid()) @db.Uuid
-  etiquetaId     String   @unique @map("etiqueta_id") @db.Uuid
-  localEstoqueId String   @map("local_estoque_id") @db.Uuid
-  recebidoPorId  String   @map("recebido_por_id") @db.Uuid
-  recebidoEm     DateTime @default(now()) @map("recebido_em") @db.Timestamptz(3)
+  id             String    @id @default(uuid()) @db.Uuid
+  etiquetaId     String    @map("etiqueta_id") @db.Uuid
+  localEstoqueId String    @map("local_estoque_id") @db.Uuid
+  recebidoPorId  String    @map("recebido_por_id") @db.Uuid
+  recebidoEm     DateTime  @default(now()) @map("recebido_em") @db.Timestamptz(3)
+  /// Estorno do recebimento (o registro é mantido).
+  estornadoEm    DateTime? @map("estornado_em") @db.Timestamptz(3)
+  estornadoPorId String?   @map("estornado_por_id") @db.Uuid
+  motivoEstorno  String?   @map("motivo_estorno")
 
   etiqueta     Etiqueta     @relation(fields: [etiquetaId], references: [id])
   localEstoque LocalEstoque @relation(fields: [localEstoqueId], references: [id])
   recebidoPor  Usuario      @relation(fields: [recebidoPorId], references: [id])
 
+  @@index([etiquetaId])
   @@map("recebimento")
+}
+
+// ---------------- Exportação para o ERP (Fase 4) ----------------
+
+/// Lote de exportação: os arquivos podem ser gerados novamente pelo número.
+model LoteExportacao {
+  id        String   @id @default(uuid()) @db.Uuid
+  numero    Int      @unique @default(autoincrement())
+  usuarioId String   @map("usuario_id") @db.Uuid
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  turnos    Int      @default(0)
+  resumo    Json     @default("{}")
+
+  usuario   Usuario          @relation(fields: [usuarioId], references: [id])
+  etiquetas Etiqueta[]
+  itens     ItemExportacao[]
+
+  @@map("lote_exportacao")
+}
+
+/// Linha exportada (instantâneo usado para gerar o arquivo de novo).
+model ItemExportacao {
+  id     String @id @default(uuid()) @db.Uuid
+  loteId String @map("lote_id") @db.Uuid
+  layout String
+  ordem  Int
+  dados  Json
+
+  lote LoteExportacao @relation(fields: [loteId], references: [id], onDelete: Cascade)
+
+  @@index([loteId, layout])
+  @@map("item_exportacao")
 }

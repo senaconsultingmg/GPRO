@@ -30,6 +30,7 @@ import {
   type TipoProduto,
 } from '@apontamento/shared';
 import { api } from '../api/cliente';
+import { EstornoRecebimento } from '../componentes/EstornoRecebimento';
 import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
 import { imprimirComAviso } from '../componentes/notificarImpressao';
 import { useLista } from '../componentes/PaginaCadastro';
@@ -698,6 +699,7 @@ export function PaginaMateriaPrima() {
           {escreve && <Tabs.Tab value="mistura">Mistura</Tabs.Tab>}
           {escreve && <Tabs.Tab value="receber">Receber da produção</Tabs.Tab>}
           {escreve && <Tabs.Tab value="retorno">Moído / reciclado</Tabs.Tab>}
+          {escreve && <Tabs.Tab value="estorno">Estorno</Tabs.Tab>}
           {pode('ordens.extrusao') && <Tabs.Tab value="extrusao">Ordem de extrusão</Tabs.Tab>}
         </Tabs.List>
         <Tabs.Panel value="lotes" pt="md">
@@ -714,6 +716,9 @@ export function PaginaMateriaPrima() {
         </Tabs.Panel>
         <Tabs.Panel value="retorno" pt="md">
           <EntradaRetorno />
+        </Tabs.Panel>
+        <Tabs.Panel value="estorno" pt="md">
+          <EstornoRecebimento setor="materia-prima" />
         </Tabs.Panel>
         <Tabs.Panel value="extrusao" pt="md">
           <OrdemExtrusao />

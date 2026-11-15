@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  esquemaEstorno,
   esquemaLeituraLocal,
   esquemaLoteCompra,
   esquemaLoteRetorno,
@@ -86,6 +87,16 @@ export class MateriaPrimaController {
     @UsuarioAtual() usuario: UsuarioAutenticado,
   ) {
     return this.servico.receber(dados.leitura, dados.localEstoqueId, usuario);
+  }
+
+  @Post('estornar')
+  @Permissao('materiaprima.escrever')
+  @HttpCode(200)
+  estornar(
+    @Body(new ValidacaoZod(esquemaEstorno)) dados: z.infer<typeof esquemaEstorno>,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.servico.estornar(dados.leitura, dados.motivo, usuario);
   }
 
   @Post('lotes/:id/transferir')

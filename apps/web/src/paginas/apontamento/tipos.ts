@@ -70,6 +70,7 @@ export interface EventoLista {
   marcaHorario: MarcaHorario;
   pesoNaoConforme: boolean;
   situacao: string;
+  corrigeEventoId: string | null;
   resumo: string;
   justificativa: string | null;
   dados: Record<string, unknown>;

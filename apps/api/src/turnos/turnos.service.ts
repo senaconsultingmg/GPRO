@@ -57,6 +57,11 @@ export function estadoMaquina(
   return estado;
 }
 
+const VISIVEIS_PCP = ['APROVADO', 'APURADO', 'EXPORTADO'];
+/** Perfil PCP sem perfil operacional (líder, apontador, superusuário). */
+export const soVeAprovados = (u: { perfis: string[] }) =>
+  u.perfis.includes('PCP') && !u.perfis.some((p) => ['SUPERUSUARIO', 'LIDER', 'APONTADOR'].includes(p));
+
 @Injectable()
 export class TurnosService {
   constructor(
@@ -88,10 +93,15 @@ export class TurnosService {
     });
   }
 
-  async listar(filtro: { situacao?: string; data?: string; apontadorId?: string }) {
+  async listar(
+    filtro: { situacao?: string; data?: string; apontadorId?: string },
+    usuario?: UsuarioAutenticado,
+  ) {
     const where: Prisma.TurnoApontamentoWhereInput = {};
-    if (filtro.situacao)
-      where.situacao = { in: filtro.situacao.split(',') as Prisma.EnumSituacaoTurnoFilter['in'] };
+    let situacoes = filtro.situacao ? filtro.situacao.split(',') : null;
+    if (usuario && soVeAprovados(usuario))
+      situacoes = (situacoes ?? VISIVEIS_PCP).filter((x) => VISIVEIS_PCP.includes(x));
+    if (situacoes) where.situacao = { in: situacoes as Prisma.EnumSituacaoTurnoFilter['in'] };
     if (filtro.data) where.data = paraDate(filtro.data);
     if (filtro.apontadorId) where.apontadorId = filtro.apontadorId;
     const turnos = await this.prisma.turnoApontamento.findMany({
@@ -108,6 +118,14 @@ export class TurnosService {
       take: 200,
     });
     return turnos.map((t) => ({ ...t, data: deDate(t.data) }));
+  }
+
+  /** O PCP só enxerga turnos cujo relatório o líder já aprovou (RN-13). */
+  async exigirVisivel(id: string, usuario: UsuarioAutenticado) {
+    const turno = await this.carregar(id);
+    if (soVeAprovados(usuario) && !VISIVEIS_PCP.includes(turno.situacao)) {
+      throw proibido('O PCP só vê turnos com relatório aprovado pelo líder.');
+    }
   }
 
   private async carregar(id: string) {
@@ -237,7 +255,7 @@ export class TurnosService {
     };
   }
 
-  private async mapasDescricao(eventos: { dados: unknown }[]) {
+  async mapasDescricao(eventos: { dados: unknown }[]) {
     const ids = new Set<string>();
     for (const e of eventos) {
       const d = e.dados as Record<string, unknown>;
@@ -257,10 +275,7 @@ export class TurnosService {
   }
 
   /** Texto curto do lançamento para a lista do turno. */
-  private resumo(
-    e: { tipo: string; dados: unknown; quantidade: number | null },
-    nomes: Map<string, string>,
-  ): string {
+  resumo(e: { tipo: string; dados: unknown; quantidade: number | null }, nomes: Map<string, string>): string {
     const d = e.dados as Record<string, unknown>;
     const n = (x: unknown) => Number(x ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
     switch (e.tipo) {

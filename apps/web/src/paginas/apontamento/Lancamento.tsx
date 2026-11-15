@@ -37,7 +37,13 @@ import {
   numeroOuNulo,
 } from '../../componentes/utilitarios';
 import { CampoHora } from './CampoHora';
-import { deCampoHora, paraCampoHora, type MaquinaNoTurno, type TurnoDetalhe } from './tipos';
+import {
+  deCampoHora,
+  paraCampoHora,
+  type EventoLista,
+  type MaquinaNoTurno,
+  type TurnoDetalhe,
+} from './tipos';
 
 export type TipoLancamento = Exclude<TipoEvento, 'SALDO_AVULSO_DEIXADO' | 'SALDO_AVULSO_RECEBIDO'>;
 
@@ -95,39 +101,63 @@ export function FormularioLancamento({
   maquina,
   tipo,
   aoConcluir,
+  correcao,
 }: {
   turno: TurnoDetalhe;
   maquina: MaquinaNoTurno;
   tipo: TipoLancamento;
   aoConcluir: () => void;
+  /** Modo correção (RN-09): parte dos valores do lançamento original e envia a solicitação ao líder. */
+  correcao?: EventoLista;
 }) {
   const cliente = useQueryClient();
   // O identificador é gerado uma vez: reenviar após falha de rede não duplica o lançamento.
   const [idEvento] = useState(() => crypto.randomUUID());
-  const [hora, setHora] = useState(paraCampoHora());
-  const [horaEditada, setHoraEditada] = useState(false);
-  const [justificativa, setJustificativa] = useState('');
-  const [divisaoId, setDivisaoId] = useState<string | null>(maquina.divisoes[0]?.id ?? null);
-  const [motivoParadaId, setMotivoParadaId] = useState<string | null>(null);
-  const [conjuntoPadraoId, setConjuntoPadraoId] = useState<string | null>(null);
-  const [conjuntosPadrao, setConjuntosPadrao] = useState<number>(1);
-  const [avulsos, setAvulsos] = useState<(number | string)[]>([]);
+  const od = (correcao?.dados ?? {}) as Record<string, unknown>;
+  const conjuntosOriginais = (od.conjuntos as { quantidade: number; avulso: boolean }[] | undefined) ?? [];
+  const [hora, setHora] = useState(paraCampoHora(correcao?.horaOcorrencia));
+  const [horaEditada, setHoraEditada] = useState(!!correcao);
+  const [justificativa, setJustificativa] = useState(correcao?.justificativa ?? '');
+  const [motivoCorrecao, setMotivoCorrecao] = useState('');
+  const [divisaoId, setDivisaoId] = useState<string | null>(
+    correcao?.divisaoId ?? maquina.divisoes[0]?.id ?? null,
+  );
+  const [motivoParadaId, setMotivoParadaId] = useState<string | null>(
+    (od.motivoParadaId as string | undefined) ?? null,
+  );
+  const [conjuntoPadraoId, setConjuntoPadraoId] = useState<string | null>(
+    (od.conjuntoPadraoId as string | undefined) ?? null,
+  );
+  const [conjuntosPadrao, setConjuntosPadrao] = useState<number>(
+    correcao ? conjuntosOriginais.filter((c) => !c.avulso).length : 1,
+  );
+  const [avulsos, setAvulsos] = useState<(number | string)[]>(
+    conjuntosOriginais.filter((c) => c.avulso).map((c) => c.quantidade),
+  );
   const [confirmarAvulso, setConfirmarAvulso] = useState(false);
-  const [pesoMedioG, setPesoMedioG] = useState<number | string>('');
+  const [pesoMedioG, setPesoMedioG] = useState<number | string>((od.pesoMedioG as number | undefined) ?? '');
   const [volumes, setVolumes] = useState<{ tipoVolume: TipoVolumeExtrusao; pesoKg: number | string }[]>([
     { tipoVolume: 'SACO', pesoKg: '' },
   ]);
   const [operador, setOperador] = useState('');
   const [indiceFluidez, setIndiceFluidez] = useState<number | string>('');
   const [produtosDestino, setProdutosDestino] = useState<string[]>([]);
-  const [tipoPerdaId, setTipoPerdaId] = useState<string | null>(null);
-  const [pesoKg, setPesoKg] = useState<number | string>('');
-  const [quantidadePecas, setQuantidadePecas] = useState<number | string>('');
-  const [lote, setLote] = useState('');
-  const [quantidade, setQuantidade] = useState<number | string>('');
-  const [divisaoDestinoId, setDivisaoDestinoId] = useState<string | null>(null);
-  const [cavidade, setCavidade] = useState<number | null>(null);
-  const [motivo, setMotivo] = useState('');
+  const [tipoPerdaId, setTipoPerdaId] = useState<string | null>(
+    (od.tipoPerdaId as string | undefined) ?? null,
+  );
+  const [pesoKg, setPesoKg] = useState<number | string>((od.pesoKg as number | null | undefined) ?? '');
+  const [quantidadePecas, setQuantidadePecas] = useState<number | string>(
+    (od.quantidadePecas as number | null | undefined) ?? '',
+  );
+  const [lote, setLote] = useState((od.lote as string | undefined) ?? '');
+  const [quantidade, setQuantidade] = useState<number | string>(
+    (od.quantidadeKg as number | undefined) ?? '',
+  );
+  const [divisaoDestinoId, setDivisaoDestinoId] = useState<string | null>(
+    (od.divisaoDestinoId as string | undefined) ?? null,
+  );
+  const [cavidade, setCavidade] = useState<number | null>((od.cavidade as number | undefined) ?? null);
+  const [motivo, setMotivo] = useState((od.motivo as string | undefined) ?? '');
   const [erros, setErros] = useState<Record<string, string>>({});
 
   const { data: motivos = [] } = useLista('motivos-parada', true);
@@ -231,6 +261,23 @@ export function FormularioLancamento({
     }
   };
 
+  const solicitar = useMutation({
+    mutationFn: (c: Record<string, unknown>) =>
+      api.post('/correcoes', {
+        eventoId: correcao!.id,
+        tipo: 'CORRIGIR',
+        justificativa: motivoCorrecao.trim(),
+        valores: c,
+      }),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['turno', turno.id] });
+      cliente.invalidateQueries({ queryKey: ['aprovacoes'] });
+      notificarSucesso('Correção enviada para aprovação do líder.');
+      aoConcluir();
+    },
+    onError: (e) => setErros(errosApiPorCampo(e)),
+  });
+
   const enviar = useMutation({
     mutationFn: (c: Record<string, unknown>) =>
       api.post<{ avisos: string[]; etiquetas: { id: string; codigo: string }[] }>(
@@ -257,8 +304,9 @@ export function FormularioLancamento({
       e.justificativa = 'Justificativa obrigatória: peso fora da tolerância.';
     if (tipo === 'SAIDA_PRODUCAO' && avulsosNum.length && !confirmarAvulso)
       e.confirmarAvulso = 'Confirme o conjunto avulso.';
+    if (correcao && motivoCorrecao.trim().length < 5) e.motivoCorrecao = 'Informe o motivo da correção.';
     setErros(e);
-    if (Object.keys(e).length === 0) enviar.mutate(c);
+    if (Object.keys(e).length === 0) (correcao ? solicitar : enviar).mutate(c);
   };
 
   const botoes = <T extends { id: string }>(
@@ -661,13 +709,24 @@ export function FormularioLancamento({
         onChange={(e) => setJustificativa(e.currentTarget.value)}
         error={erros.justificativa}
       />
-      <AlertaErroApi erro={enviar.error} />
+      {correcao && (
+        <Textarea
+          label="Motivo da correção"
+          withAsterisk
+          autosize
+          minRows={2}
+          value={motivoCorrecao}
+          onChange={(e) => setMotivoCorrecao(e.currentTarget.value)}
+          error={erros.motivoCorrecao}
+        />
+      )}
+      <AlertaErroApi erro={correcao ? solicitar.error : enviar.error} />
       <Group grow>
         <Button size="xl" variant="default" onClick={aoConcluir}>
           Cancelar
         </Button>
-        <Button size="xl" onClick={confirmar} loading={enviar.isPending}>
-          Confirmar
+        <Button size="xl" onClick={confirmar} loading={enviar.isPending || solicitar.isPending}>
+          {correcao ? 'Solicitar correção' : 'Confirmar'}
         </Button>
       </Group>
     </Stack>

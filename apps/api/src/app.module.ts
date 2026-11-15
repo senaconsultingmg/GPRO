@@ -38,6 +38,10 @@ import { MateriaPrimaService } from './materia-prima/materia-prima.service.js';
 import { MateriaPrimaController } from './materia-prima/materia-prima.controller.js';
 import { EstoqueService } from './estoque/estoque.service.js';
 import { EstoqueController } from './estoque/estoque.controller.js';
+import { AprovacoesService } from './aprovacoes/aprovacoes.service.js';
+import { AprovacoesController } from './aprovacoes/aprovacoes.controller.js';
+import { ApuracaoService } from './apuracao/apuracao.service.js';
+import { ApuracaoController } from './apuracao/apuracao.controller.js';
 
 @Module({
   imports: [
@@ -64,6 +68,8 @@ import { EstoqueController } from './estoque/estoque.controller.js';
     EtiquetasController,
     MateriaPrimaController,
     EstoqueController,
+    AprovacoesController,
+    ApuracaoController,
   ],
   providers: [
     PrismaService,
@@ -84,6 +90,8 @@ import { EstoqueController } from './estoque/estoque.controller.js';
     EtiquetasService,
     MateriaPrimaService,
     EstoqueService,
+    AprovacoesService,
+    ApuracaoService,
     { provide: APP_GUARD, useClass: GuardaAcesso },
     { provide: APP_FILTER, useClass: FiltroErros },
   ],

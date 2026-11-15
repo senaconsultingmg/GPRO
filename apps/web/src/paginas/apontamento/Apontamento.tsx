@@ -9,17 +9,14 @@ import {
   Loader,
   Modal,
   Paper,
-  ScrollArea,
   Select,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   Title,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import {
-  IconAlertTriangle,
   IconArrowsExchange,
   IconBox,
   IconFileReport,
@@ -39,7 +36,6 @@ import { Link, useNavigate } from 'react-router';
 import {
   formatarDataCivil,
   formatarDataHora,
-  ROTULO_MARCA_HORARIO,
   ROTULO_TIPO_EVENTO,
   ROTULO_UNIDADE,
   usaMolde,
@@ -47,6 +43,7 @@ import {
 import { api } from '../../api/cliente';
 import { useLista } from '../../componentes/PaginaCadastro';
 import { AlertaErroApi, fmtNumero, notificarSucesso } from '../../componentes/utilitarios';
+import { ListaLancamentos } from './ListaLancamentos';
 import { FormularioLancamento, type TipoLancamento } from './Lancamento';
 import { Divisoes, Fechamento, LigarMaquina } from './Modais';
 import type { MaquinaNoTurno, TurnoDetalhe } from './tipos';
@@ -382,55 +379,7 @@ export function PaginaApontamento() {
       <Title order={4} mt="md">
         Lançamentos do turno
       </Title>
-      <ScrollArea>
-        <Table striped verticalSpacing="xs" miw={800}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Ocorrência</Table.Th>
-              <Table.Th>Máquina</Table.Th>
-              <Table.Th>Lançamento</Table.Th>
-              <Table.Th>Detalhe</Table.Th>
-              <Table.Th>Marcas</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {turno.eventos.map((e) => (
-              <Table.Tr key={e.id}>
-                <Table.Td style={{ whiteSpace: 'nowrap' }}>{formatarDataHora(e.horaOcorrencia)}</Table.Td>
-                <Table.Td>{turno.maquinas.find((m) => m.maquinaId === e.maquinaId)?.maquina.codigo}</Table.Td>
-                <Table.Td>{ROTULO_TIPO_EVENTO[e.tipo]}</Table.Td>
-                <Table.Td>
-                  <Text size="sm">{e.resumo}</Text>
-                  {e.justificativa && (
-                    <Text size="xs" c="dimmed">
-                      Justificativa: {e.justificativa}
-                    </Text>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  <Group gap={4}>
-                    {e.marcaHorario !== 'NO_MOMENTO' && (
-                      <Badge color="orange" title={`Registrado em ${formatarDataHora(e.horaRegistro)}`}>
-                        {ROTULO_MARCA_HORARIO[e.marcaHorario]}
-                      </Badge>
-                    )}
-                    {e.pesoNaoConforme && (
-                      <Badge color="red" leftSection={<IconAlertTriangle size={12} />}>
-                        Peso NC
-                      </Badge>
-                    )}
-                    {Boolean(e.dados.temAvulso) && (
-                      <Badge color="orange" variant="filled">
-                        AVULSO
-                      </Badge>
-                    )}
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </ScrollArea>
+      <ListaLancamentos turno={turno} />
 
       <Modal
         opened={!!lancando}

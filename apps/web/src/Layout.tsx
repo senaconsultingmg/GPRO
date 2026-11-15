@@ -42,6 +42,8 @@ import {
   IconListNumbers,
   IconStack2,
   IconFileSpreadsheet,
+  IconChecklist,
+  IconFileExport,
 } from '@tabler/icons-react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { ROTULO_PERFIL, type Permissao } from '@apontamento/shared';
@@ -71,6 +73,18 @@ const GRUPOS: { titulo: string; itens: ItemMenu[] }[] = [
         caminho: '/turnos',
         icone: <IconReport size={18} />,
         permissao: 'turnos.ler',
+      },
+      {
+        rotulo: 'Aprovações',
+        caminho: '/aprovacoes',
+        icone: <IconChecklist size={18} />,
+        permissao: 'aprovacoes.ler',
+      },
+      {
+        rotulo: 'Apuração e exportação',
+        caminho: '/apuracao',
+        icone: <IconFileExport size={18} />,
+        permissao: 'exportacao.ler',
       },
     ],
   },
@@ -311,7 +325,7 @@ export function Layout() {
           <Group px="sm" mt="xl" gap={4}>
             <IconSettings size={14} color="gray" />
             <Badge variant="outline" color="gray" size="sm">
-              Fase 3
+              Fase 4
             </Badge>
           </Group>
         </ScrollArea>

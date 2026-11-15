@@ -1,4 +1,4 @@
-import type { LayoutImportacao } from './enumeracoes.js';
+import type { LayoutExcel } from './enumeracoes.js';
 
 export interface CampoLayout {
   campo: string;
@@ -10,7 +10,7 @@ export interface CampoLayout {
 }
 
 /** Layouts de importação (seção 9). Os nomes das colunas são configuráveis pelo superusuário. */
-export const LAYOUTS_EXCEL: Record<LayoutImportacao, { titulo: string; campos: CampoLayout[] }> = {
+export const LAYOUTS_EXCEL: Record<LayoutExcel, { titulo: string; campos: CampoLayout[] }> = {
   IMPORTACAO_ORDENS: {
     titulo: 'Ordens de produção',
     campos: [
@@ -86,6 +86,257 @@ export const LAYOUTS_EXCEL: Record<LayoutImportacao, { titulo: string; campos: C
         colunaPadrao: 'Embalagem',
         obrigatorio: false,
         exemplo: 'Pilha',
+      },
+    ],
+  },
+  // Layouts de exportação (seção 9): nomes de coluna configuráveis no mapeamento.
+  EXPORTACAO_PRODUCAO: {
+    titulo: 'Produção apurada',
+    campos: [
+      {
+        campo: 'loteExportacao',
+        rotulo: 'Lote de exportação',
+        colunaPadrao: 'Lote de exportação',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'numeroErp',
+        rotulo: 'Número da OP no ERP',
+        colunaPadrao: 'Número da OP no ERP',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'numeroInterno',
+        rotulo: 'Número interno',
+        colunaPadrao: 'Número interno',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      { campo: 'divisao', rotulo: 'Divisão', colunaPadrao: 'Divisão', obrigatorio: false, exemplo: '' },
+      { campo: 'data', rotulo: 'Data', colunaPadrao: 'Data', obrigatorio: false, exemplo: '' },
+      {
+        campo: 'horarioTurno',
+        rotulo: 'Horário de turno',
+        colunaPadrao: 'Horário de turno',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      { campo: 'equipe', rotulo: 'Equipe', colunaPadrao: 'Equipe', obrigatorio: false, exemplo: '' },
+      { campo: 'maquina', rotulo: 'Máquina', colunaPadrao: 'Máquina', obrigatorio: false, exemplo: '' },
+      { campo: 'molde', rotulo: 'Molde', colunaPadrao: 'Molde', obrigatorio: false, exemplo: '' },
+      {
+        campo: 'codigoProduto',
+        rotulo: 'Código do produto',
+        colunaPadrao: 'Código do produto',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'quantidade',
+        rotulo: 'Quantidade produzida',
+        colunaPadrao: 'Quantidade produzida',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      { campo: 'unidade', rotulo: 'Unidade', colunaPadrao: 'Unidade', obrigatorio: false, exemplo: '' },
+      {
+        campo: 'conjuntos',
+        rotulo: 'Número de conjuntos',
+        colunaPadrao: 'Número de conjuntos',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'quantidadeAvulsos',
+        rotulo: 'Quantidade em conjuntos avulsos',
+        colunaPadrao: 'Quantidade em conjuntos avulsos',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'pecasRefugadas',
+        rotulo: 'Peças refugadas',
+        colunaPadrao: 'Peças refugadas',
+        obrigatorio: false,
+        exemplo: '',
+      },
+    ],
+  },
+  EXPORTACAO_CONSUMO: {
+    titulo: 'Consumo de matéria-prima',
+    campos: [
+      {
+        campo: 'loteExportacao',
+        rotulo: 'Lote de exportação',
+        colunaPadrao: 'Lote de exportação',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'numeroErp',
+        rotulo: 'Número da OP no ERP',
+        colunaPadrao: 'Número da OP no ERP',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      { campo: 'divisao', rotulo: 'Divisão', colunaPadrao: 'Divisão', obrigatorio: false, exemplo: '' },
+      { campo: 'data', rotulo: 'Data', colunaPadrao: 'Data', obrigatorio: false, exemplo: '' },
+      {
+        campo: 'codigoMaterial',
+        rotulo: 'Código do material',
+        colunaPadrao: 'Código do material',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'loteMaterial',
+        rotulo: 'Lote do material',
+        colunaPadrao: 'Lote do material',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'fornecedor',
+        rotulo: 'Fornecedor',
+        colunaPadrao: 'Fornecedor',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'notaFiscal',
+        rotulo: 'Nota fiscal',
+        colunaPadrao: 'Nota fiscal',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'entradaKg',
+        rotulo: 'Entrada (kg)',
+        colunaPadrao: 'Entrada (kg)',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'devolucaoKg',
+        rotulo: 'Devolução (kg)',
+        colunaPadrao: 'Devolução (kg)',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'transferenciaKg',
+        rotulo: 'Transferência (kg)',
+        colunaPadrao: 'Transferência (kg)',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'consumoLiquidoKg',
+        rotulo: 'Consumo líquido (kg)',
+        colunaPadrao: 'Consumo líquido (kg)',
+        obrigatorio: false,
+        exemplo: '',
+      },
+    ],
+  },
+  EXPORTACAO_PERDAS: {
+    titulo: 'Perdas',
+    campos: [
+      {
+        campo: 'loteExportacao',
+        rotulo: 'Lote de exportação',
+        colunaPadrao: 'Lote de exportação',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'numeroErp',
+        rotulo: 'Número da OP no ERP',
+        colunaPadrao: 'Número da OP no ERP',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      { campo: 'divisao', rotulo: 'Divisão', colunaPadrao: 'Divisão', obrigatorio: false, exemplo: '' },
+      { campo: 'data', rotulo: 'Data', colunaPadrao: 'Data', obrigatorio: false, exemplo: '' },
+      { campo: 'maquina', rotulo: 'Máquina', colunaPadrao: 'Máquina', obrigatorio: false, exemplo: '' },
+      {
+        campo: 'tipoPerda',
+        rotulo: 'Tipo de perda',
+        colunaPadrao: 'Tipo de perda',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      { campo: 'pesoKg', rotulo: 'Peso (kg)', colunaPadrao: 'Peso (kg)', obrigatorio: false, exemplo: '' },
+      {
+        campo: 'quantidadePecas',
+        rotulo: 'Quantidade (peças)',
+        colunaPadrao: 'Quantidade (peças)',
+        obrigatorio: false,
+        exemplo: '',
+      },
+    ],
+  },
+  EXPORTACAO_ETIQUETAS: {
+    titulo: 'Etiquetas e recebimento',
+    campos: [
+      {
+        campo: 'loteExportacao',
+        rotulo: 'Lote de exportação',
+        colunaPadrao: 'Lote de exportação',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'codigoEtiqueta',
+        rotulo: 'Código da etiqueta',
+        colunaPadrao: 'Código da etiqueta',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'numeroErp',
+        rotulo: 'Número da OP no ERP',
+        colunaPadrao: 'Número da OP no ERP',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'codigoProduto',
+        rotulo: 'Código do produto',
+        colunaPadrao: 'Código do produto',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'quantidade',
+        rotulo: 'Quantidade',
+        colunaPadrao: 'Quantidade',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      { campo: 'unidade', rotulo: 'Unidade', colunaPadrao: 'Unidade', obrigatorio: false, exemplo: '' },
+      {
+        campo: 'localEstoque',
+        rotulo: 'Local de estoque',
+        colunaPadrao: 'Local de estoque',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'recebidoEm',
+        rotulo: 'Recebido em',
+        colunaPadrao: 'Recebido em',
+        obrigatorio: false,
+        exemplo: '',
+      },
+      {
+        campo: 'recebidoPor',
+        rotulo: 'Recebido por',
+        colunaPadrao: 'Recebido por',
+        obrigatorio: false,
+        exemplo: '',
       },
     ],
   },

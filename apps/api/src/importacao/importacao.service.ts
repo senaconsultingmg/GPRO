@@ -7,6 +7,8 @@ import {
   interpretarUnidade,
   LAYOUTS_EXCEL,
   LAYOUTS_IMPORTACAO,
+  LAYOUTS_EXPORTACAO,
+  type LayoutExcel,
   ROTULO_TIPO_EMBALAGEM,
   ROTULO_TIPO_PRODUTO,
   type LayoutImportacao,
@@ -80,8 +82,13 @@ export class ImportacaoService {
     return layout as LayoutImportacao;
   }
 
+  private validarLayoutQualquer(layout: string): LayoutExcel {
+    if (!(layout in LAYOUTS_EXCEL)) throw naoEncontrado('Layout');
+    return layout as LayoutExcel;
+  }
+
   /** Nome da coluna de cada campo: o mapeado pelo superusuário ou o padrão. */
-  async colunas(layout: LayoutImportacao): Promise<Record<string, string>> {
+  async colunas(layout: LayoutExcel): Promise<Record<string, string>> {
     const mapeados = await this.prisma.mapeamentoColuna.findMany({ where: { layout } });
     const mapa = new Map(mapeados.map((m) => [m.campo, m.coluna]));
     return Object.fromEntries(
@@ -91,10 +98,11 @@ export class ImportacaoService {
 
   async layouts() {
     const r = [];
-    for (const layout of LAYOUTS_IMPORTACAO) {
+    for (const layout of [...LAYOUTS_IMPORTACAO, ...LAYOUTS_EXPORTACAO]) {
       const colunas = await this.colunas(layout);
       r.push({
         layout,
+        tipo: (LAYOUTS_IMPORTACAO as readonly string[]).includes(layout) ? 'IMPORTACAO' : 'EXPORTACAO',
         titulo: LAYOUTS_EXCEL[layout].titulo,
         campos: LAYOUTS_EXCEL[layout].campos.map((c) => ({ ...c, coluna: colunas[c.campo] })),
       });
@@ -103,7 +111,7 @@ export class ImportacaoService {
   }
 
   async salvarMapeamento(layoutTexto: string, colunas: Record<string, string>, usuario: UsuarioAutenticado) {
-    const layout = this.validarLayout(layoutTexto);
+    const layout = this.validarLayoutQualquer(layoutTexto);
     const campos = new Set(LAYOUTS_EXCEL[layout].campos.map((c) => c.campo));
     const desconhecido = Object.keys(colunas).find((c) => !campos.has(c));
     if (desconhecido) throw new ErroNegocio(`Campo desconhecido no layout: ${desconhecido}.`);

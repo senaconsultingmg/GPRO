@@ -31,6 +31,8 @@ import { PaginaEtiquetas } from './paginas/Etiquetas';
 import { PaginaEstoque } from './paginas/Estoque';
 import { PaginaMateriaPrima } from './paginas/MateriaPrima';
 import { PaginaLayouts } from './paginas/Layouts';
+import { PaginaAprovacoes } from './paginas/Aprovacoes';
+import { PaginaApuracao } from './paginas/Apuracao';
 import * as cfg from './cadastros/configuracoes';
 
 dayjs.locale('pt-br');
@@ -190,6 +192,22 @@ function Aplicacao() {
           element={
             <Protegida permissao="turnos.ler">
               <PaginaRelatorioTurno />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/aprovacoes"
+          element={
+            <Protegida permissao="aprovacoes.ler">
+              <PaginaAprovacoes />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/apuracao"
+          element={
+            <Protegida permissao="exportacao.ler">
+              <PaginaApuracao />
             </Protegida>
           }
         />

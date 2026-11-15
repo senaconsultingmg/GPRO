@@ -3,12 +3,54 @@
 | Fase                                             | Situação     | Data       |
 | ------------------------------------------------ | ------------ | ---------- |
 | 1 — Fundação e cadastros                         | Concluída    | 15/11/2026 |
-| 2 — OPs, rodadas e apontamento                   | Não iniciada |            |
-| 3 — Etiquetas, matéria-prima e estoque           | Não iniciada |            |
-| 4 — Correções, aprovações, apuração e exportação | Não iniciada |            |
+| 2 — OPs, rodadas e apontamento                   | Concluída    | 15/11/2026 |
+| 3 — Etiquetas, matéria-prima e estoque           | Concluída    | 15/11/2026 |
+| 4 — Correções, aprovações, apuração e exportação | Concluída    | 15/11/2026 |
 | 5 — Painéis e indicadores                        | Não iniciada |            |
 | 6 — Manutenção                                   | Não iniciada |            |
 | 7 — Offline e implantação                        | Não iniciada |            |
+
+## Fase 4 — Correções, aprovações, apuração e exportação
+
+### O que foi feito
+
+**`packages/shared`**: layouts de exportação (produção apurada, consumo, perdas, etiquetas e recebimento) no mesmo mapeamento de colunas da importação; tipos de correção (corrigir/anular); esquemas de solicitação de correção, decisão, rejeição e estorno; permissões novas (`correcoes.solicitar`, `aprovacoes.ler`, `aprovacoes.decidir`, `apuracao.executar`, `exportacao.executar`, `exportacao.ler`).
+
+**API**
+
+- Migration `fase4_correcoes_exportacao`: dados da correção na aprovação (tipo, justificativa, valores, lançamento corretivo), estorno de recebimento (o recebimento não some), cancelamento de etiqueta, marcos do turno (aprovado, apurado, exportado, devolvido com parecer), lote e itens de exportação, movimentos de estorno e de baixa por exportação.
+- Correções (RN-09): `POST /correcoes` (corrigir com os valores certos, validados como um lançamento novo, ou anular). A viabilidade é simulada na hora da solicitação. Na aprovação: original fica INCORRETO e sai dos cálculos; etiquetas do original são canceladas e novas saem com o prefixo do mesmo posto; estoque do original é estornado; o corretivo fica ligado ao original (`corrigeEventoId`).
+- Aprovações: fila do líder (`GET /aprovacoes`), aprovar/rejeitar com parecer; quem solicitou não decide; aprovação do relatório (`POST /turnos/:id/aprovar`) só sem pendência em aberto.
+- Apuração do PCP: lista só turnos aprovados; apurar; devolver ao líder com parecer (o turno volta a FECHADO com pendência). O PCP não enxerga turno não aprovado nem na lista geral de turnos nem no relatório.
+- Exportação: prévia, geração do lote (4 arquivos .xlsx com os nomes de colunas mapeados, regeráveis pelo número do lote), baixa no estoque das etiquetas exportadas, marcação de etiquetas, divisões e turnos como exportados; turno exportado não aceita alteração.
+- Estorno de recebimento no estoque (produto) e na matéria-prima (devolução/extrusão).
+- Dados de exemplo: segundo líder (`lider2@exemplo.com.br`) para a separação de funções.
+
+**Front-end**: lista de lançamentos com o original em vermelho riscado e o vínculo com o corretivo, botão "Corrigir" (formulário do lançamento já preenchido ou anulação) no apontamento e no relatório; tela Aprovações (relatórios a aprovar, pendências em aberto/aprovadas/rejeitadas, decisão com parecer); botão "Aprovar relatório" e aviso de devolução/exportação no relatório; tela Apuração e exportação (apurar, devolver, prévia em abas, exportar, lotes com download dos 4 arquivos); aba Estorno no estoque e na matéria-prima; mapeamento das colunas de exportação na tela de importação.
+
+### Critérios de aceite
+
+| Critério                                                                                               | Como foi verificado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Correção aprovada deixa o original em vermelho, fora dos cálculos, com vínculo ao corretivo; nada some | Integração (`aprovacoes/fase4.test.ts`): saída de 3 conjuntos corrigida para 2 → original INCORRETO e ainda presente no detalhe do turno, corretivo com `corrigeEventoId` e 60 peças, relatório com produção 60, 3 etiquetas originais CANCELADAS (consultáveis) e 2 novas `T1-…`; etiqueta recebida bloqueia a aprovação até o estorno, e o recebimento estornado continua gravado. Ponta a ponta (`fase4.spec.ts`): apontador corrige a perda de 2 para 3 peças; após a aprovação a linha original aparece riscada em vermelho com "corrigido pelo lançamento…" e o corretivo mostra "Corrige o lançamento…". |
+| Quem solicitou a correção não pode aprová-la                                                           | Integração: líder solicita anulação e recebe 403 "Quem solicitou a correção não pode aprová-la."; apontador recebe 403; o segundo líder aprova. Na tela, o botão "Decidir" fica desabilitado para o próprio solicitante.                                                                                                                                                                                                                                                                                                                                                                                        |
+| Relatório não é aprovado com pendência aberta e o PCP não enxerga turno não aprovado                   | Integração: com correção pendente, aprovar o relatório → 409; rejeitada a correção (parecer obrigatório) e decidida a pendência de horário, aprova. Antes disso, o turno não aparece na apuração nem em `/turnos` para o PCP e o relatório devolve 403; apurar → 409. Devolução do PCP volta o turno ao líder com pendência. Ponta a ponta: PCP não vê o turno fechado; líder decide as pendências e só então "Aprovar relatório" fica habilitado.                                                                                                                                                              |
+| Exportação gera os arquivos no layout mapeado, dá baixa no saldo e não exporta o mesmo item duas vezes | Integração: lote 1 com produção (30 peças recebidas, 1 conjunto, 5 refugadas), consumo (25 kg − 5 kg devolvidos = 20 kg), perdas e etiquetas; etiqueta exportada sai do saldo da Expedição; etiqueta não recebida fica no aviso e sai no lote 2 sem repetir consumo, perdas e refugo; nova exportação sem novidade → 422; nenhum código de etiqueta repetido entre lotes; arquivo .xlsx baixado tem o cabeçalho mapeado e, após mudar o mapeamento, é regerado com os nomes novos. Ponta a ponta: PCP apura, exporta, baixa `exportacao-N-producao.xlsx` e o botão Exportar fica desabilitado.                  |
+| Turno exportado não aceita nenhuma alteração                                                           | Integração: correção (409 "Turno exportado não aceita nenhuma alteração."), lançamento, fechamento, aprovação, devolução, apuração e estorno de etiqueta exportada → recusados. Ponta a ponta: o relatório mostra o aviso e não oferece "Corrigir".                                                                                                                                                                                                                                                                                                                                                             |
+
+### Resultado das verificações finais
+
+- Migrations sem pendências; aplicadas do zero nos bancos de teste, e2e e Docker.
+- Testes: shared 72/72, API 102/102, agente 4/4, web 3/3, ponta a ponta 15/15 (Fases 1 a 4).
+- Lint sem problemas, Prettier sem diferenças, typecheck sem erros.
+- Docker: 4 serviços saudáveis com a migration nova; prévia de exportação pela web (nginx → API) respondendo. Mesma ressalva de rede da sandbox.
+
+### Pendências e observações
+
+- Consumo de semiacabado não entra no arquivo de consumo (o layout é em kg de material); se o ERP precisar, criar um layout próprio.
+- Corrigir uma transferência exige que a divisão de destino esteja em turno aberto (mesma regra do lançamento); depois disso, só anulando.
+- Etiquetas novas emitidas por correção ficam com "impressão pendente" e são impressas pela tela de etiquetas.
+- Painéis e indicadores: **Fase 5**.
 
 ## Fase 3 — Etiquetas, matéria-prima e estoque
 

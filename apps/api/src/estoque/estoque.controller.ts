@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { esquemaLeituraLocal } from '@apontamento/shared';
+import { esquemaEstorno, esquemaLeituraLocal } from '@apontamento/shared';
 import type { z } from 'zod';
 import { Permissao, UsuarioAtual, type UsuarioAutenticado } from '../comum/decoradores.js';
 import { ValidacaoZod } from '../comum/validacao-zod.pipe.js';
@@ -26,6 +26,16 @@ export class EstoqueController {
     @UsuarioAtual() usuario: UsuarioAutenticado,
   ) {
     return this.servico.receber(dados.leitura, dados.localEstoqueId, usuario);
+  }
+
+  @Post('estornar')
+  @Permissao('estoque.receber')
+  @HttpCode(200)
+  estornar(
+    @Body(new ValidacaoZod(esquemaEstorno)) dados: z.infer<typeof esquemaEstorno>,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.servico.estornar(dados.leitura, dados.motivo, usuario);
   }
 
   @Get('recebimento')

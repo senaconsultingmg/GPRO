@@ -183,3 +183,40 @@ Registro das decisões de projeto. "Confirmada" indica decisão respondida pelo 
 ### Correções encontradas durante os testes
 
 - Na abertura da página, uma falha de rede na checagem da sessão (ou uma navegação que interrompe a requisição) apagava os tokens e deslogava o usuário; o mesmo ocorria quando a renovação do token falhava por rede. Agora só uma recusa do servidor (401/403) encerra a sessão; falha de rede mantém a sessão com os dados do usuário guardados no dispositivo.
+
+## Fase 4 — Correções, aprovações, apuração e exportação (15/11/2026)
+
+### Respostas do usuário às dúvidas do plano (todas confirmadas)
+
+| #   | Dúvida                             | Decisão                                                                                                                                                                                                                                                      |
+| --- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Tipos de correção                  | **Corrigir** (novo lançamento do mesmo tipo com os valores certos, validado como se fosse lançado agora, ligado ao original) e **Anular** (marca como incorreto sem substituto). Valem para todos os tipos de lançamento.                                    |
+| 2   | Quem solicita e quem aprova        | O apontador solicita nos turnos que abriu, até a apuração; o líder solicita em qualquer turno não apurado. Correção pedida por um líder é aprovada por outro líder.                                                                                          |
+| 3   | Divergência na apuração            | O PCP "devolve ao líder" com parecer: o turno volta de aprovado/apurado para fechado, com uma pendência para o líder.                                                                                                                                        |
+| 4   | Etiquetas na correção              | Na aprovação, as etiquetas do original ficam CANCELADAS (continuam consultáveis) e as novas saem com o prefixo do mesmo posto, com impressão pendente. Etiqueta já recebida bloqueia a aprovação até o estoque estornar o recebimento.                       |
+| 5   | Rejeitar pendência de horário/peso | Só registra o parecer; conta como decidida.                                                                                                                                                                                                                  |
+| 6   | Produção exportada                 | Por divisão: soma das etiquetas recebidas e ainda não exportadas (conjuntos e avulsos). Não recebidas aparecem em aviso e vão em lote posterior. Saldo solto não é exportado. Refugo, perdas e consumo vão uma única vez, na primeira exportação da divisão. |
+| 7   | Arquivos                           | 4 arquivos .xlsx por lote, baixados separadamente e regeráveis pelo número do lote.                                                                                                                                                                          |
+| 8   | Baixa                              | Etiquetas de produto exportadas saem do estoque do local onde foram recebidas; matéria-prima não muda (já baixada no apontamento).                                                                                                                           |
+
+### Correções e aprovações
+
+- A solicitação simula a aplicação numa transação desfeita: valores inválidos ou impossíveis (saldo, linha do tempo, OP encerrada) são recusados na hora, e não só na aprovação. Etiqueta recebida não bloqueia a solicitação, só a aprovação.
+- Na aprovação, o corretivo é registrado em nome de quem solicitou; a hora padrão é a do original. Lançamentos corretivos não geram nova pendência de horário retroativo.
+- Pendências de horário/peso do lançamento corrigido são encerradas automaticamente com parecer "lançamento corrigido/anulado".
+- Estorno do original: movimentos de estoque do lançamento são revertidos (`ESTORNO_CORRECAO`); semiacabado consumido volta a RECEBIDO/EMITIDO; lote de extrusão tem a quantidade reduzida. Etiqueta já consumida ou exportada impede a correção.
+- Posto das etiquetas novas: o das etiquetas do original; senão, de outra etiqueta do turno; senão, o posto configurado no dispositivo de quem aprova (cabeçalho `x-posto`).
+- O apontador não aprova o relatório do turno que apontou; o líder não decide pendência que ele mesmo gerou.
+
+### Apuração e exportação
+
+- Turnos: FECHADO → (líder) APROVADO → (PCP) APURADO → (exportação) EXPORTADO. Só ABERTO/FECHADO/APROVADO aceitam correção; nada muda depois de apurado, exceto a devolução ao líder, e nada muda depois de exportado.
+- O perfil PCP (sem perfil de líder, apontador ou superusuário) só enxerga turnos aprovados, apurados ou exportados — inclusive na lista geral e no relatório.
+- Exportação sob trava (`pg_advisory_xact_lock`): duas exportações simultâneas não pegam os mesmos itens. Sem novidade (nenhum turno apurado nem etiqueta recebida pendente), devolve 422.
+- As linhas de cada lote ficam gravadas (`item_exportacao`); o arquivo é gerado a cada download com o mapeamento de colunas atual. Colunas de código saem como texto.
+- OP de extrusão: produção em kg (soma das saídas) vai na primeira exportação da divisão, pois não há etiqueta de produto.
+- Transferência no arquivo de consumo: positiva = enviada a outra máquina; negativa = recebida.
+
+### Estorno de recebimento
+
+- Estoque (etiqueta de produto) e matéria-prima (devolução/extrusão), com motivo obrigatório. O recebimento fica marcado como estornado (data, usuário, motivo), o saldo é revertido (`ESTORNO_RECEBIMENTO`) e a etiqueta volta a EMITIDA. Recusado para etiqueta exportada ou para lote cujo saldo no local já foi usado.

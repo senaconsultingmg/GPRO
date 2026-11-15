@@ -46,6 +46,8 @@ export interface ContextoLancamento {
   agora: Date;
   /** Posto (dispositivo do cadastro) que emite as etiquetas — cabeçalho x-posto. */
   postoId?: string | null;
+  /** Lançamento corretivo (RN-09): evento corrigido. Não gera pendência de horário. */
+  corrigeEventoId?: string | null;
 }
 
 type DivisaoComOrdem = Prisma.DivisaoOpGetPayload<{
@@ -428,11 +430,12 @@ export class EventosService {
         marcaHorario: marca,
         pesoNaoConforme,
         justificativa: entrada.justificativa ?? null,
+        corrigeEventoId: ctx.corrigeEventoId ?? null,
       },
     });
 
     // Pendências para o líder (decisão na Fase 4).
-    if (marca !== 'NO_MOMENTO') {
+    if (marca !== 'NO_MOMENTO' && !ctx.corrigeEventoId) {
       await tx.aprovacao.create({
         data: {
           tipo: 'HORARIO',

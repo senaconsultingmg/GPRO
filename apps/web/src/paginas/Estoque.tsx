@@ -24,6 +24,7 @@ import {
   type Unidade,
 } from '@apontamento/shared';
 import { api } from '../api/cliente';
+import { EstornoRecebimento } from '../componentes/EstornoRecebimento';
 import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
 import { useLista } from '../componentes/PaginaCadastro';
 import { AlertaErroApi, fmtNumero, notificarSucesso } from '../componentes/utilitarios';
@@ -252,6 +253,7 @@ export function Saldos() {
 }
 
 export function PaginaEstoque() {
+  const { pode } = useAutenticacao();
   return (
     <Stack>
       <Title order={2}>Estoque</Title>
@@ -259,12 +261,16 @@ export function PaginaEstoque() {
         <Tabs.List>
           <Tabs.Tab value="receber">Recebimento</Tabs.Tab>
           <Tabs.Tab value="saldos">Saldo por local</Tabs.Tab>
+          {pode('estoque.receber') && <Tabs.Tab value="estorno">Estorno</Tabs.Tab>}
         </Tabs.List>
         <Tabs.Panel value="receber" pt="md">
           <Recebimento />
         </Tabs.Panel>
         <Tabs.Panel value="saldos" pt="md">
           <Saldos />
+        </Tabs.Panel>
+        <Tabs.Panel value="estorno" pt="md">
+          <EstornoRecebimento setor="estoque" />
         </Tabs.Panel>
       </Tabs>
     </Stack>
