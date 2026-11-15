@@ -89,3 +89,53 @@ Registro das decisões de projeto. "Confirmada" indica decisão respondida pelo 
 - O `docker-compose.yml` funciona sem `.env`, com valores padrão; em produção é obrigatório definir senha do banco e `JWT_SEGREDO` no `.env`.
 - O front-end é servido por nginx, que repassa `/api` para a API. Sem CORS em produção.
 - O agente de impressão e os modelos ZPL iniciais (100 × 150 e 100 × 50 mm) ficam para a Fase 3; na Fase 1 existe só o cadastro de layouts e impressoras.
+
+## Fase 2 — OPs, rodadas e apontamento (15/11/2026)
+
+### Respostas do usuário às dúvidas do plano
+
+| #   | Dúvida                                                | Decisão                                                                                                                                                                                                                                                            |
+| --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Etiquetas na Fase 2                                   | Os conjuntos (número, quantidade, marca de avulso) ficam gravados no evento de saída; etiqueta e código são gerados na Fase 3 a partir deles. **Mudança na seção 8 (P15): sem QR Code; o código da etiqueta usa código de barras GS1-128 (EAN-128).** (confirmada) |
+| 2   | Matéria-prima, semiacabado, devolução e transferência | Lançados com material e lote digitados e quantidade (kg; semiacabado em peças), sem movimentar estoque. A Fase 3 liga aos lotes e etiquetas. (confirmada)                                                                                                          |
+| 3   | Paradas programadas previstas (RN-04)                 | Novo campo "parada programada prevista (min)" no horário de turno. Horas disponíveis = do início da máquina (ou do início nominal) ao fim nominal − essa previsão; o apontador pode ajustar. Dados de exemplo: 60 min. (confirmada)                                |
+| 4   | Período válido da hora da ocorrência (RN-08)          | Do início nominal do horário (ou da abertura, se antes) ao fim nominal, estendido até o fechamento real (ou até agora, com o turno aberto). (confirmada)                                                                                                           |
+| 5   | OEE e PH no relatório                                 | Tempos, produção esperada, OEE e PH implementados em `packages/shared` e usados no relatório; a Fase 5 reaproveita para os painéis. (confirmada)                                                                                                                   |
+| 6   | Cavidades da OP na rodada                             | Cada cavidade atribuída deve produzir o produto da OP (quando o molde define), nenhuma cavidade em duas OPs e a quantidade igual às cavidades da ficha vigente. (confirmada)                                                                                       |
+| 7   | Encerrar rodada e OP                                  | O PCP encerra manualmente. A meta nunca passa do saldo; produção além do saldo é aceita com aviso. (confirmada)                                                                                                                                                    |
+| 8   | Parada aberta no fechamento                           | É encerrada pela hora do fechamento (para os tempos). Se a máquina segue rodando, o próximo turno oferece iniciar já parada com o mesmo motivo. (confirmada)                                                                                                       |
+| 9   | Pendências do líder                                   | Criadas e exibidas no relatório (peso fora da tolerância, lançamento fora de hora); decisão na Fase 4. (confirmada)                                                                                                                                                |
+| 10  | Parada que gera manutenção                            | A parada guarda a marca `geraSolicitacaoManutencao`; as solicitações são criadas na Fase 6. (confirmada)                                                                                                                                                           |
+| 11  | Vários apontadores                                    | Um turno aberto por apontador; cada máquina em um único turno aberto; o apontador só lança no próprio turno. (confirmada)                                                                                                                                          |
+
+### Ordens e rodadas
+
+- OP de produção exige produto acabado ou semiacabado; OP de extrusão exige produto em kg (extrusado). A unidade da OP é a do produto.
+- Código da divisão: número do ERP + "-" + sequencial de 2 dígitos; OP de extrusão sem número do ERP usa o número interno.
+- OP só é alterada ou cancelada enquanto estiver aberta e sem divisão; a primeira divisão muda a OP para "em produção". OP encerrada ou cancelada recusa novos lançamentos.
+- Uma OP não entra em duas rodadas não encerradas ao mesmo tempo.
+- A rodada passa a "em andamento" quando a máquina é ligada com ela; o PCP só encerra a rodada fora de turno aberto. A máquina não aceita outra rodada em andamento.
+- A produção acumulada da OP é sempre calculada dos eventos (saídas + saldo deixado − saldo recebido), nunca guardada.
+
+### Importação de Excel
+
+- Biblioteca `exceljs`. A primeira planilha do arquivo é lida; a linha 1 é o cabeçalho, comparado sem diferenciar maiúsculas e acentos.
+- Aceita unidade PC/PÇ/UN/PEÇA/KG, tipos e embalagens pelo código ou pelo rótulo, datas dd/mm/aaaa ou data do Excel, números em pt-BR ("1.500,5"). Data inexistente (31/02) é recusada.
+- A importação de OPs cria somente OPs de produção. Produtos podem ser importados pelo PCP e pelo superusuário; o conjunto padrão informado é criado ou atualizado.
+- "Validar" simula sem gravar. Toda importação efetiva fica registrada com usuário, data, arquivo original (baixável) e resultado; as recusadas também.
+- O modelo baixado formata as colunas de código como texto (zeros à esquerda). Número digitado como número no Excel perde os zeros à esquerda — orientar o uso do modelo.
+
+### Apontamento
+
+- **Hora do registro** é a do servidor no momento do recebimento (online). A hora do dispositivo para lançamentos offline entra na Fase 7.
+- O campo de hora mostra dd/mm/aaaa hh:mm (24 h) com botões −10/−1/Agora/+1/+10 min. Sem edição, o lançamento usa a hora exata (com segundos); eventos no mesmo instante são ordenados pela ordem de registro.
+- Validações de sequência por máquina e turno: início → (parada → reinício)* → fim; paradas não se sobrepõem; saída de produção só com a máquina ligada e fora de parada (inclusive para lançamentos retroativos, que não podem "engolir" uma saída já lançada).
+- Bloqueios de cavidade pertencem à rodada e atravessam turnos; desbloqueio só de cavidade bloqueada.
+- Saída em injetora/sopradora: conjunto padrão do produto (escolhido automaticamente quando há um só), N conjuntos padrão + conjuntos avulsos (confirmação obrigatória), peso médio obrigatório. Extrusora: volumes com peso digitado e operador obrigatório.
+- Perda: tipo + kg e/ou peças. Refugo (tipos marcados) entra na Qualidade do OEE.
+- Transferência: o destino é uma divisão de outra máquina em turno aberto; sai do consumo da OP de origem e entra no da de destino.
+- Saldo solto: informado no fechamento (só OP em peças); na divisão seguinte da mesma OP o novo apontador confirma a quantidade recebida (pode diferir do deixado).
+- Ligar máquina que seguia rodando sugere a hora exata de fechamento do turno anterior.
+- O identificador de cada evento é gerado no dispositivo; reenviar o mesmo identificador devolve o registro existente ("duplicado").
+- Produção esperada: horas produzindo × PH da ficha congelada na rodada × (cavidades ativas ÷ cavidades da OP) em cada trecho.
+- Consumo teórico: g/peça × produção total (boas + refugadas); percentual sobre o peso produzido.

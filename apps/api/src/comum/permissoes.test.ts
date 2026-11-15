@@ -41,6 +41,9 @@ describe('Permissões por perfil (seção 5)', () => {
     '/api/dispositivos',
     '/api/fichas-tecnicas',
     '/api/escalas?de=2026-01-01&ate=2026-01-31',
+    '/api/ordens',
+    '/api/rodadas',
+    '/api/turnos',
   ];
 
   it('todos os perfis consultam cadastros, fichas e escala', async () => {
@@ -67,6 +70,16 @@ describe('Permissões por perfil (seção 5)', () => {
         metodo: 'post',
         rota: '/api/fichas-tecnicas/00000000-0000-4000-8000-000000000000/aprovar',
         permitidos: ['SUPERUSUARIO'],
+      },
+      { metodo: 'post', rota: '/api/ordens', permitidos: ['PCP'], corpo: {} },
+      { metodo: 'post', rota: '/api/rodadas', permitidos: ['PCP'], corpo: {} },
+      { metodo: 'post', rota: '/api/turnos', permitidos: ['APONTADOR'], corpo: {} },
+      { metodo: 'get', rota: '/api/importacoes', permitidos: ['PCP', 'SUPERUSUARIO'] },
+      {
+        metodo: 'put',
+        rota: '/api/importacoes/layouts/IMPORTACAO_ORDENS',
+        permitidos: ['SUPERUSUARIO'],
+        corpo: {},
       },
     ];
 

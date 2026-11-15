@@ -72,7 +72,11 @@ export async function carregarDadosExemplo(
       diasSemana: [1, 2, 3, 4, 5],
     },
   ]) {
-    const r = await prisma.horarioTurno.upsert({ where: { nome: h.nome }, create: h, update: {} });
+    const r = await prisma.horarioTurno.upsert({
+      where: { nome: h.nome },
+      create: { ...h, paradaProgramadaPrevistaMin: 60 },
+      update: {},
+    });
     horarios[h.nome] = r.id;
   }
 
@@ -594,6 +598,104 @@ export async function carregarDadosExemplo(
     { nome: 'PC Matéria-prima', prefixo: 'MP', descricao: 'Setor de matéria-prima' },
   ]) {
     await prisma.dispositivo.upsert({ where: { prefixo: d.prefixo }, create: d, update: {} });
+  }
+
+  // ---------- Ordens de produção e rodadas (Fase 2) ----------
+  const ordens: Record<string, string> = {};
+  for (const o of [
+    { chave: 'CAD1', numeroErp: '04508401001', produto: 'CAD-0031', quantidade: 3000 },
+    { chave: 'CAD2', numeroErp: '04508401002', produto: 'CAD-0032', quantidade: 3000 },
+    { chave: 'CAD3', numeroErp: '04508401003', produto: 'CAD-0033', quantidade: 1500 },
+    { chave: 'MES', numeroErp: '04508501001', produto: 'MES-0010', quantidade: 800 },
+    { chave: 'BAL', numeroErp: '04508601001', produto: 'BAL-0005', quantidade: 5000 },
+    { chave: 'FRA', numeroErp: '04508701001', produto: 'FRA-0002', quantidade: 20000 },
+  ]) {
+    const r = await prisma.ordemProducao.upsert({
+      where: { numeroErp: o.numeroErp },
+      create: {
+        numeroErp: o.numeroErp,
+        tipo: 'PRODUCAO',
+        produtoId: produtos[o.produto],
+        quantidade: o.quantidade,
+        unidade: 'PECA',
+        origem: 'EXEMPLO',
+        criadoPorId: usuarios.pcp,
+      },
+      update: {},
+    });
+    ordens[o.chave] = r.id;
+  }
+  const extrusao =
+    (await prisma.ordemProducao.findFirst({ where: { tipo: 'EXTRUSAO', origem: 'EXEMPLO' } })) ??
+    (await prisma.ordemProducao.create({
+      data: {
+        tipo: 'EXTRUSAO',
+        produtoId: produtos['EXT-PP-REC'],
+        quantidade: 2000,
+        unidade: 'KG',
+        origem: 'EXEMPLO',
+        observacao: 'Reciclagem de PP moído',
+        criadoPorId: usuarios.pcp,
+      },
+    }));
+  ordens.EXT = extrusao.id;
+
+  if ((await prisma.rodada.count()) === 0) {
+    const ficha = async (produto: string, molde: string | null, maquina: string) =>
+      (
+        await prisma.fichaTecnica.findFirstOrThrow({
+          where: {
+            produtoId: produtos[produto],
+            moldeId: molde ? moldes[molde] : null,
+            maquinaId: maquinas[maquina],
+            situacao: 'VIGENTE',
+          },
+        })
+      ).id;
+    const rodadas = [
+      {
+        maquina: 'INJ-01',
+        molde: 'MOL-CAD-3',
+        ops: [
+          { ordem: 'CAD1', produto: 'CAD-0031', cavidades: [1] },
+          { ordem: 'CAD2', produto: 'CAD-0032', cavidades: [2] },
+          { ordem: 'CAD3', produto: 'CAD-0033', cavidades: [3] },
+        ],
+      },
+      {
+        maquina: 'INJ-03',
+        molde: 'MOL-BAL-2',
+        ops: [{ ordem: 'BAL', produto: 'BAL-0005', cavidades: [1, 2] }],
+      },
+      {
+        maquina: 'SOP-01',
+        molde: 'MOL-FRA-4',
+        ops: [{ ordem: 'FRA', produto: 'FRA-0002', cavidades: [1, 2, 3, 4] }],
+      },
+      {
+        maquina: 'EXT-01',
+        molde: null,
+        ops: [{ ordem: 'EXT', produto: 'EXT-PP-REC', cavidades: [] as number[] }],
+      },
+    ];
+    for (const r of rodadas) {
+      const ops = [];
+      for (const o of r.ops) {
+        ops.push({
+          ordemId: ordens[o.ordem],
+          fichaTecnicaId: await ficha(o.produto, r.molde, r.maquina),
+          cavidades: o.cavidades,
+        });
+      }
+      await prisma.rodada.create({
+        data: {
+          maquinaId: maquinas[r.maquina],
+          moldeId: r.molde ? moldes[r.molde] : null,
+          criadoPorId: usuarios.pcp,
+          ops: { create: ops },
+        },
+      });
+    }
   }
 
   // ---------- Escala (próximos 60 dias, sem sobrescrever) ----------

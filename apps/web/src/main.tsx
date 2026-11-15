@@ -21,6 +21,11 @@ import { PaginaEscala } from './paginas/Escala';
 import { PaginaParametros } from './paginas/Parametros';
 import { PaginaAuditoria } from './paginas/Auditoria';
 import { PaginaCadastro, type ConfigCadastro } from './componentes/PaginaCadastro';
+import { PaginaOrdens } from './paginas/Ordens';
+import { PaginaImportacoes } from './paginas/Importacoes';
+import { PaginaRodadas } from './paginas/Rodadas';
+import { PaginaApontamento } from './paginas/apontamento/Apontamento';
+import { PaginaRelatorioTurno, PaginaTurnos } from './paginas/Turnos';
 import * as cfg from './cadastros/configuracoes';
 
 dayjs.locale('pt-br');
@@ -126,6 +131,54 @@ function Aplicacao() {
           element={
             <Protegida permissao="auditoria.ler">
               <PaginaAuditoria />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/ordens"
+          element={
+            <Protegida permissao="ordens.ler">
+              <PaginaOrdens />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/importacoes"
+          element={
+            <Protegida permissao="importacoes.ler">
+              <PaginaImportacoes />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/rodadas"
+          element={
+            <Protegida permissao="rodadas.ler">
+              <PaginaRodadas />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/apontamento"
+          element={
+            <Protegida permissao="apontamento.lancar">
+              <PaginaApontamento />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/turnos"
+          element={
+            <Protegida permissao="turnos.ler">
+              <PaginaTurnos />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/turnos/:id/relatorio"
+          element={
+            <Protegida permissao="turnos.ler">
+              <PaginaRelatorioTurno />
             </Protegida>
           }
         />

@@ -34,6 +34,10 @@ import {
   IconUsers,
   IconUsersGroup,
   IconClock,
+  IconReport,
+  IconListNumbers,
+  IconStack2,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { Link, Outlet, useLocation } from 'react-router';
 import { ROTULO_PERFIL, type Permissao } from '@apontamento/shared';
@@ -49,6 +53,41 @@ interface ItemMenu {
 
 const GRUPOS: { titulo: string; itens: ItemMenu[] }[] = [
   { titulo: '', itens: [{ rotulo: 'Início', caminho: '/', icone: <IconHome size={18} /> }] },
+  {
+    titulo: 'Apontamento',
+    itens: [
+      {
+        rotulo: 'Apontamento',
+        caminho: '/apontamento',
+        icone: <IconDeviceTablet size={18} />,
+        permissao: 'apontamento.lancar',
+      },
+      {
+        rotulo: 'Turnos e relatórios',
+        caminho: '/turnos',
+        icone: <IconReport size={18} />,
+        permissao: 'turnos.ler',
+      },
+    ],
+  },
+  {
+    titulo: 'Planejamento',
+    itens: [
+      {
+        rotulo: 'Ordens de produção',
+        caminho: '/ordens',
+        icone: <IconListNumbers size={18} />,
+        permissao: 'ordens.ler',
+      },
+      { rotulo: 'Rodadas', caminho: '/rodadas', icone: <IconStack2 size={18} />, permissao: 'rodadas.ler' },
+      {
+        rotulo: 'Importação Excel',
+        caminho: '/importacoes',
+        icone: <IconFileSpreadsheet size={18} />,
+        permissao: 'importacoes.ler',
+      },
+    ],
+  },
   {
     titulo: 'Engenharia',
     itens: [
@@ -242,7 +281,7 @@ export function Layout() {
           <Group px="sm" mt="xl" gap={4}>
             <IconSettings size={14} color="gray" />
             <Badge variant="outline" color="gray" size="sm">
-              Fase 1
+              Fase 2
             </Badge>
           </Group>
         </ScrollArea>

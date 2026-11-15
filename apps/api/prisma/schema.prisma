@@ -79,6 +79,75 @@ enum TipoEtiqueta {
   DEVOLUCAO_TRANSFERENCIA
 }
 
+enum TipoOrdem {
+  PRODUCAO
+  EXTRUSAO
+}
+
+enum SituacaoOrdem {
+  ABERTA
+  EM_PRODUCAO
+  ENCERRADA
+  CANCELADA
+}
+
+enum SituacaoRodada {
+  PLANEJADA
+  EM_ANDAMENTO
+  ENCERRADA
+}
+
+enum SituacaoTurno {
+  ABERTO
+  FECHADO
+  APROVADO
+  APURADO
+  EXPORTADO
+}
+
+enum TipoEvento {
+  INICIO_MAQUINA
+  FIM_MAQUINA
+  PARADA
+  REINICIO
+  ENTRADA_MATERIA_PRIMA
+  ENTRADA_SEMIACABADO
+  SAIDA_PRODUCAO
+  PERDA
+  DEVOLUCAO_MATERIA_PRIMA
+  TRANSFERENCIA
+  BLOQUEIO_CAVIDADE
+  DESBLOQUEIO_CAVIDADE
+  SALDO_AVULSO_DEIXADO
+  SALDO_AVULSO_RECEBIDO
+}
+
+enum MarcaHorario {
+  NO_MOMENTO
+  RETROATIVO
+  ANTECIPADO
+}
+
+enum SituacaoEvento {
+  VALIDO
+  CORRECAO_PENDENTE
+  INCORRETO
+}
+
+enum TipoAprovacao {
+  CORRECAO
+  HORARIO
+  PESO
+  JUSTIFICATIVA
+  RELATORIO_TURNO
+}
+
+enum SituacaoAprovacao {
+  PENDENTE
+  APROVADA
+  REJEITADA
+}
+
 enum TipoParametro {
   INTEIRO
   DECIMAL
@@ -106,6 +175,13 @@ model Usuario {
 
   fichasCriadas  FichaTecnica[] @relation("FichaCriadaPor")
   fichasAprovadas FichaTecnica[] @relation("FichaAprovadaPor")
+  ordensCriadas   OrdemProducao[]
+  rodadasCriadas  Rodada[]
+  turnos          TurnoApontamento[]
+  eventos         Evento[]
+  aprovacoesSolicitadas Aprovacao[] @relation("AprovacaoSolicitante")
+  aprovacoesDecididas   Aprovacao[] @relation("AprovacaoAprovador")
+  importacoes     Importacao[]
 
   @@map("usuario")
 }
@@ -166,11 +242,14 @@ model HorarioTurno {
   horaFim    String          @map("hora_fim")
   /// 0 = domingo ... 6 = sábado.
   diasSemana Int[]           @map("dias_semana")
+  /// Minutos de parada programada prevista no turno (ex.: refeição), descontados das horas disponíveis.
+  paradaProgramadaPrevistaMin Int @default(0) @map("parada_programada_prevista_min")
   ativo      Boolean         @default(true)
   criadoEm   DateTime        @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
   escalas Escala[]
+  turnos  TurnoApontamento[]
 
   @@map("horario_turno")
 }
@@ -185,6 +264,7 @@ model Equipe {
 
   usuarios Usuario[]
   escalas  Escala[]
+  turnos   TurnoApontamento[]
 
   @@map("equipe")
 }
@@ -226,7 +306,11 @@ model Maquina {
   criadoEm                     DateTime    @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm                 DateTime    @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
-  fichas FichaTecnica[]
+  fichas  FichaTecnica[]
+  rodadas Rodada[]
+  turnos  MaquinaTurno[]
+  divisoes DivisaoOp[]
+  eventos Evento[]
 
   @@map("maquina")
 }
@@ -251,6 +335,7 @@ model Molde {
 
   cavidades CavidadeMolde[]
   fichas    FichaTecnica[]
+  rodadas   Rodada[]
 
   @@map("molde")
 }
@@ -283,6 +368,7 @@ model Produto {
   conjuntos   ConjuntoPadrao[]
   fichas      FichaTecnica[]
   componentes ComponenteFicha[]
+  ordens      OrdemProducao[]
 
   @@map("produto")
 }
@@ -335,6 +421,7 @@ model FichaTecnica {
   criadoPor  Usuario           @relation("FichaCriadaPor", fields: [criadoPorId], references: [id])
   aprovador  Usuario?          @relation("FichaAprovadaPor", fields: [aprovadorId], references: [id])
   composicao ComponenteFicha[]
+  rodadaOps  RodadaOp[]
 
   @@index([produtoId, moldeId, maquinaId])
   @@map("ficha_tecnica")
@@ -434,4 +521,232 @@ model Dispositivo {
   atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
   @@map("dispositivo")
+}
+
+// ---------------- Produção (Fase 2) ----------------
+
+/// Ordem de produção (RN-01). Número interno automático; número do ERP único (obrigatório na produção).
+model OrdemProducao {
+  id                 String        @id @default(uuid()) @db.Uuid
+  numeroInterno      Int           @unique @default(autoincrement()) @map("numero_interno")
+  numeroErp          String?       @unique @map("numero_erp")
+  tipo               TipoOrdem
+  produtoId          String        @map("produto_id") @db.Uuid
+  quantidade         Float
+  unidade            Unidade
+  dataInicioPrevista DateTime?     @map("data_inicio_prevista") @db.Date
+  dataFimPrevista    DateTime?     @map("data_fim_prevista") @db.Date
+  observacao         String?
+  situacao           SituacaoOrdem @default(ABERTA)
+  origem             String        @default("DIGITACAO")
+  criadoPorId        String        @map("criado_por_id") @db.Uuid
+  encerradaEm        DateTime?     @map("encerrada_em") @db.Timestamptz(3)
+  criadoEm           DateTime      @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm       DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  produto   Produto     @relation(fields: [produtoId], references: [id])
+  criadoPor Usuario     @relation(fields: [criadoPorId], references: [id])
+  rodadaOps RodadaOp[]
+  divisoes  DivisaoOp[]
+
+  @@map("ordem_producao")
+}
+
+/// Rodada (RN-03): máquina + molde + OPs que rodam juntas.
+model Rodada {
+  id           String         @id @default(uuid()) @db.Uuid
+  numero       Int            @unique @default(autoincrement())
+  maquinaId    String         @map("maquina_id") @db.Uuid
+  moldeId      String?        @map("molde_id") @db.Uuid
+  situacao     SituacaoRodada @default(PLANEJADA)
+  observacao   String?
+  criadoPorId  String         @map("criado_por_id") @db.Uuid
+  iniciadaEm   DateTime?      @map("iniciada_em") @db.Timestamptz(3)
+  encerradaEm  DateTime?      @map("encerrada_em") @db.Timestamptz(3)
+  criadoEm     DateTime       @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime       @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  maquina   Maquina        @relation(fields: [maquinaId], references: [id])
+  molde     Molde?         @relation(fields: [moldeId], references: [id])
+  criadoPor Usuario        @relation(fields: [criadoPorId], references: [id])
+  ops       RodadaOp[]
+  turnos    MaquinaTurno[]
+  eventos   Evento[]
+
+  @@index([maquinaId, situacao])
+  @@map("rodada")
+}
+
+/// OP da rodada, com a versão da ficha técnica congelada e as cavidades atribuídas.
+model RodadaOp {
+  id             String @id @default(uuid()) @db.Uuid
+  rodadaId       String @map("rodada_id") @db.Uuid
+  ordemId        String @map("ordem_id") @db.Uuid
+  fichaTecnicaId String @map("ficha_tecnica_id") @db.Uuid
+  cavidades      Int[]
+
+  rodada       Rodada        @relation(fields: [rodadaId], references: [id], onDelete: Cascade)
+  ordem        OrdemProducao @relation(fields: [ordemId], references: [id])
+  fichaTecnica FichaTecnica  @relation(fields: [fichaTecnicaId], references: [id])
+  divisoes     DivisaoOp[]
+
+  @@unique([rodadaId, ordemId])
+  @@map("rodada_op")
+}
+
+model TurnoApontamento {
+  id             String        @id @default(uuid()) @db.Uuid
+  apontadorId    String        @map("apontador_id") @db.Uuid
+  data           DateTime      @db.Date
+  horarioTurnoId String        @map("horario_turno_id") @db.Uuid
+  equipeId       String        @map("equipe_id") @db.Uuid
+  inicioNominal  DateTime      @map("inicio_nominal") @db.Timestamptz(3)
+  fimNominal     DateTime      @map("fim_nominal") @db.Timestamptz(3)
+  abertoEm       DateTime      @default(now()) @map("aberto_em") @db.Timestamptz(3)
+  fechadoEm      DateTime?     @map("fechado_em") @db.Timestamptz(3)
+  situacao       SituacaoTurno @default(ABERTO)
+  dispositivo    String
+
+  apontador    Usuario        @relation(fields: [apontadorId], references: [id])
+  horarioTurno HorarioTurno   @relation(fields: [horarioTurnoId], references: [id])
+  equipe       Equipe         @relation(fields: [equipeId], references: [id])
+  maquinas     MaquinaTurno[]
+  divisoes     DivisaoOp[]
+  eventos      Evento[]
+  aprovacoes   Aprovacao[]
+
+  @@index([apontadorId, situacao])
+  @@map("turno_apontamento")
+}
+
+model MaquinaTurno {
+  id        String  @id @default(uuid()) @db.Uuid
+  turnoId   String  @map("turno_id") @db.Uuid
+  maquinaId String  @map("maquina_id") @db.Uuid
+  rodadaId  String  @map("rodada_id") @db.Uuid
+  /// Definido no fechamento: a máquina segue rodando para o próximo turno.
+  segueRodando Boolean @default(false) @map("segue_rodando")
+  /// Motivo da parada que estava aberta no fechamento (oferecida ao próximo turno).
+  paradaAbertaMotivoId String? @map("parada_aberta_motivo_id") @db.Uuid
+
+  turno   TurnoApontamento @relation(fields: [turnoId], references: [id])
+  maquina Maquina          @relation(fields: [maquinaId], references: [id])
+  rodada  Rodada           @relation(fields: [rodadaId], references: [id])
+
+  @@unique([turnoId, maquinaId])
+  @@map("maquina_turno")
+}
+
+/// Divisão da OP no turno (RN-04).
+model DivisaoOp {
+  id               String   @id @default(uuid()) @db.Uuid
+  ordemId          String   @map("ordem_id") @db.Uuid
+  rodadaOpId       String   @map("rodada_op_id") @db.Uuid
+  sequencial       Int
+  codigo           String   @unique
+  turnoId          String   @map("turno_id") @db.Uuid
+  maquinaId        String   @map("maquina_id") @db.Uuid
+  horasDisponiveis Float    @map("horas_disponiveis")
+  phReferencia     Float    @map("ph_referencia")
+  meta             Float
+  criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  ordem    OrdemProducao    @relation(fields: [ordemId], references: [id])
+  rodadaOp RodadaOp         @relation(fields: [rodadaOpId], references: [id])
+  turno    TurnoApontamento @relation(fields: [turnoId], references: [id])
+  maquina  Maquina          @relation(fields: [maquinaId], references: [id])
+  eventos  Evento[]
+
+  @@unique([ordemId, sequencial])
+  @@unique([turnoId, rodadaOpId])
+  @@map("divisao_op")
+}
+
+/// Lançamento imutável do apontador. Totais e indicadores são calculados a partir dos eventos.
+model Evento {
+  /// Identificador único gerado no dispositivo (evita duplicidade no reenvio).
+  id             String         @id @db.Uuid
+  tipo           TipoEvento
+  turnoId        String         @map("turno_id") @db.Uuid
+  maquinaId      String         @map("maquina_id") @db.Uuid
+  rodadaId       String?        @map("rodada_id") @db.Uuid
+  divisaoId      String?        @map("divisao_id") @db.Uuid
+  horaOcorrencia DateTime       @map("hora_ocorrencia") @db.Timestamptz(3)
+  horaRegistro   DateTime       @map("hora_registro") @db.Timestamptz(3)
+  recebidoEm     DateTime       @default(now()) @map("recebido_em") @db.Timestamptz(3)
+  usuarioId      String         @map("usuario_id") @db.Uuid
+  dispositivo    String
+  dados          Json           @default("{}")
+  /// Quantidade principal do evento (peças ou kg), para somas rápidas.
+  quantidade     Float?
+  marcaHorario   MarcaHorario   @default(NO_MOMENTO) @map("marca_horario")
+  pesoNaoConforme Boolean       @default(false) @map("peso_nao_conforme")
+  situacao       SituacaoEvento @default(VALIDO)
+  corrigeEventoId String?       @map("corrige_evento_id") @db.Uuid
+  justificativa  String?
+
+  turno   TurnoApontamento @relation(fields: [turnoId], references: [id])
+  maquina Maquina          @relation(fields: [maquinaId], references: [id])
+  rodada  Rodada?          @relation(fields: [rodadaId], references: [id])
+  divisao DivisaoOp?       @relation(fields: [divisaoId], references: [id])
+  usuario Usuario          @relation(fields: [usuarioId], references: [id])
+  aprovacoes Aprovacao[]
+
+  @@index([turnoId, maquinaId, horaOcorrencia])
+  @@index([rodadaId, tipo])
+  @@index([divisaoId, tipo])
+  @@map("evento")
+}
+
+/// Pendências para o líder (Fase 2 só registra; a decisão vem na Fase 4).
+model Aprovacao {
+  id            String            @id @default(uuid()) @db.Uuid
+  tipo          TipoAprovacao
+  turnoId       String            @map("turno_id") @db.Uuid
+  eventoId      String?           @map("evento_id") @db.Uuid
+  descricao     String
+  solicitanteId String            @map("solicitante_id") @db.Uuid
+  aprovadorId   String?           @map("aprovador_id") @db.Uuid
+  situacao      SituacaoAprovacao @default(PENDENTE)
+  parecer       String?
+  criadoEm      DateTime          @default(now()) @map("criado_em") @db.Timestamptz(3)
+  decididoEm    DateTime?         @map("decidido_em") @db.Timestamptz(3)
+
+  turno       TurnoApontamento @relation(fields: [turnoId], references: [id])
+  evento      Evento?          @relation(fields: [eventoId], references: [id])
+  solicitante Usuario          @relation("AprovacaoSolicitante", fields: [solicitanteId], references: [id])
+  aprovador   Usuario?         @relation("AprovacaoAprovador", fields: [aprovadorId], references: [id])
+
+  @@index([turnoId, situacao])
+  @@map("aprovacao")
+}
+
+/// Registro de cada importação de Excel (usuário, data, arquivo e resultado).
+model Importacao {
+  id          String   @id @default(uuid()) @db.Uuid
+  layout      String
+  arquivoNome String   @map("arquivo_nome")
+  arquivo     Bytes
+  usuarioId   String   @map("usuario_id") @db.Uuid
+  criadoEm    DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  sucesso     Boolean
+  linhas      Int
+  criados     Int      @default(0)
+  atualizados Int      @default(0)
+  erros       Json     @default("[]")
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@map("importacao")
+}
+
+/// Nome da coluna no arquivo para cada campo do sistema, por layout (seção 9).
+model MapeamentoColuna {
+  id     String @id @default(uuid()) @db.Uuid
+  layout String
+  campo  String
+  coluna String
+
+  @@unique([layout, campo])
+  @@map("mapeamento_coluna")
 }

@@ -22,6 +22,16 @@ import { EscalaController } from './escala/escala.controller.js';
 import { FichasService } from './fichas/fichas.service.js';
 import { FichasController } from './fichas/fichas.controller.js';
 import { SaudeController } from './saude.controller.js';
+import { OrdensService } from './ordens/ordens.service.js';
+import { OrdensController } from './ordens/ordens.controller.js';
+import { ImportacaoService } from './importacao/importacao.service.js';
+import { ImportacaoController } from './importacao/importacao.controller.js';
+import { RodadasService } from './rodadas/rodadas.service.js';
+import { RodadasController } from './rodadas/rodadas.controller.js';
+import { TurnosService } from './turnos/turnos.service.js';
+import { EventosService } from './turnos/eventos.service.js';
+import { RelatorioService } from './turnos/relatorio.service.js';
+import { TurnosController } from './turnos/turnos.controller.js';
 
 @Module({
   imports: [
@@ -41,6 +51,10 @@ import { SaudeController } from './saude.controller.js';
     ...DEFINICOES_CADASTRO.map(criarControladorCadastro),
     EscalaController,
     FichasController,
+    OrdensController,
+    ImportacaoController,
+    RodadasController,
+    TurnosController,
   ],
   providers: [
     PrismaService,
@@ -52,6 +66,12 @@ import { SaudeController } from './saude.controller.js';
     MoldesService,
     EscalaService,
     FichasService,
+    OrdensService,
+    ImportacaoService,
+    RodadasService,
+    TurnosService,
+    EventosService,
+    RelatorioService,
     { provide: APP_GUARD, useClass: GuardaAcesso },
     { provide: APP_FILTER, useClass: FiltroErros },
   ],

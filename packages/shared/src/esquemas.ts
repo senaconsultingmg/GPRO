@@ -83,6 +83,8 @@ export const esquemaHorarioTurno = z
     horaInicio: hora,
     horaFim: hora,
     diasSemana: z.array(z.number().int().min(0).max(6)).min(1, 'Selecione ao menos um dia da semana.'),
+    /** Minutos de parada programada prevista no turno (ex.: refeição), descontados das horas disponíveis. */
+    paradaProgramadaPrevistaMin: z.number().int().min(0).max(720).default(0),
     ativo: z.boolean().default(true),
   })
   .refine((v) => v.horaInicio !== v.horaFim, {

@@ -512,6 +512,7 @@ export const configHorarios: ConfigCadastro = {
     horaInicio: '07:00',
     horaFim: '19:00',
     diasSemana: [0, 1, 2, 3, 4, 5, 6],
+    paradaProgramadaPrevistaMin: 60,
     ativo: true,
   },
   paraFormulario: semDatas,
@@ -533,6 +534,13 @@ export const configHorarios: ConfigCadastro = {
       ajuda: 'Pode ser menor que o início (turno atravessa a meia-noite).',
     },
     { nome: 'diasSemana', rotulo: 'Dias da semana', tipo: 'diasSemana', inteiro: true },
+    {
+      nome: 'paradaProgramadaPrevistaMin',
+      rotulo: 'Parada programada prevista',
+      tipo: 'inteiro',
+      unidade: 'min',
+      ajuda: 'Ex.: refeição. Descontada das horas disponíveis na meta da divisão da OP.',
+    },
     { nome: 'ativo', rotulo: 'Ativo', tipo: 'booleano' },
   ],
   colunas: [
@@ -542,6 +550,7 @@ export const configHorarios: ConfigCadastro = {
       valor: (r) => ROTULO_MODALIDADE_TURNO[r.modalidade as 'CENTRAL' | 'REVEZAMENTO'],
     },
     { rotulo: 'Horário', valor: (r) => `${r.horaInicio} às ${r.horaFim}` },
+    { rotulo: 'Parada prevista', valor: (r) => `${r.paradaProgramadaPrevistaMin ?? 0} min` },
     {
       rotulo: 'Dias',
       valor: (r) =>

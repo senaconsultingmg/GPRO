@@ -32,6 +32,20 @@ export const PERMISSOES = {
   'fichas.escrever': ['PCP'],
   /** Superusuário aprova fichas técnicas (premissa P9). */
   'fichas.aprovar': ['SUPERUSUARIO'],
+  // Fase 2
+  'ordens.ler': TODOS,
+  /** PCP digita, importa, encerra e cancela OPs (RN-01). */
+  'ordens.escrever': ['PCP'],
+  /** Importação de produtos por Excel: PCP e superusuário (dono do cadastro de produtos). */
+  'produtos.importar': ['PCP', 'SUPERUSUARIO'],
+  /** Mapeamento de colunas dos layouts de Excel (seção 9). */
+  'excel.mapear': ['SUPERUSUARIO'],
+  'importacoes.ler': ['PCP', 'SUPERUSUARIO'],
+  'rodadas.ler': TODOS,
+  'rodadas.escrever': ['PCP'],
+  'turnos.ler': TODOS,
+  /** Abrir/fechar turno, ligar máquinas, criar divisões e lançar eventos (somente no próprio turno). */
+  'apontamento.lancar': ['APONTADOR'],
 } as const satisfies Record<string, Perfil[]>;
 
 export type Permissao = keyof typeof PERMISSOES;

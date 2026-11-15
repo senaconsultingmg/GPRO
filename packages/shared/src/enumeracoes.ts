@@ -122,3 +122,104 @@ export type TipoParametro = (typeof TIPOS_PARAMETRO)[number];
 
 export const DIAS_SEMANA = [0, 1, 2, 3, 4, 5, 6] as const;
 export const ROTULO_DIA_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] as const;
+
+// ---------------- Fase 2: ordens, rodadas, turnos e eventos ----------------
+
+export const TIPOS_ORDEM = ['PRODUCAO', 'EXTRUSAO'] as const;
+export type TipoOrdem = (typeof TIPOS_ORDEM)[number];
+export const ROTULO_TIPO_ORDEM: Record<TipoOrdem, string> = { PRODUCAO: 'Produção', EXTRUSAO: 'Extrusão' };
+
+export const SITUACOES_ORDEM = ['ABERTA', 'EM_PRODUCAO', 'ENCERRADA', 'CANCELADA'] as const;
+export type SituacaoOrdem = (typeof SITUACOES_ORDEM)[number];
+export const ROTULO_SITUACAO_ORDEM: Record<SituacaoOrdem, string> = {
+  ABERTA: 'Aberta',
+  EM_PRODUCAO: 'Em produção',
+  ENCERRADA: 'Encerrada',
+  CANCELADA: 'Cancelada',
+};
+
+export const SITUACOES_RODADA = ['PLANEJADA', 'EM_ANDAMENTO', 'ENCERRADA'] as const;
+export type SituacaoRodada = (typeof SITUACOES_RODADA)[number];
+export const ROTULO_SITUACAO_RODADA: Record<SituacaoRodada, string> = {
+  PLANEJADA: 'Planejada',
+  EM_ANDAMENTO: 'Em andamento',
+  ENCERRADA: 'Encerrada',
+};
+
+export const SITUACOES_TURNO = ['ABERTO', 'FECHADO', 'APROVADO', 'APURADO', 'EXPORTADO'] as const;
+export type SituacaoTurno = (typeof SITUACOES_TURNO)[number];
+export const ROTULO_SITUACAO_TURNO: Record<SituacaoTurno, string> = {
+  ABERTO: 'Aberto',
+  FECHADO: 'Fechado',
+  APROVADO: 'Aprovado',
+  APURADO: 'Apurado',
+  EXPORTADO: 'Exportado',
+};
+
+export const TIPOS_EVENTO = [
+  'INICIO_MAQUINA',
+  'FIM_MAQUINA',
+  'PARADA',
+  'REINICIO',
+  'ENTRADA_MATERIA_PRIMA',
+  'ENTRADA_SEMIACABADO',
+  'SAIDA_PRODUCAO',
+  'PERDA',
+  'DEVOLUCAO_MATERIA_PRIMA',
+  'TRANSFERENCIA',
+  'BLOQUEIO_CAVIDADE',
+  'DESBLOQUEIO_CAVIDADE',
+  'SALDO_AVULSO_DEIXADO',
+  'SALDO_AVULSO_RECEBIDO',
+] as const;
+export type TipoEvento = (typeof TIPOS_EVENTO)[number];
+export const ROTULO_TIPO_EVENTO: Record<TipoEvento, string> = {
+  INICIO_MAQUINA: 'Início de máquina',
+  FIM_MAQUINA: 'Fim de máquina',
+  PARADA: 'Parada',
+  REINICIO: 'Reinício',
+  ENTRADA_MATERIA_PRIMA: 'Entrada de matéria-prima',
+  ENTRADA_SEMIACABADO: 'Entrada de semiacabado',
+  SAIDA_PRODUCAO: 'Saída de produção',
+  PERDA: 'Perda',
+  DEVOLUCAO_MATERIA_PRIMA: 'Devolução de matéria-prima',
+  TRANSFERENCIA: 'Transferência',
+  BLOQUEIO_CAVIDADE: 'Bloqueio de cavidade',
+  DESBLOQUEIO_CAVIDADE: 'Desbloqueio de cavidade',
+  SALDO_AVULSO_DEIXADO: 'Saldo solto deixado',
+  SALDO_AVULSO_RECEBIDO: 'Saldo solto recebido',
+};
+
+export const MARCAS_HORARIO = ['NO_MOMENTO', 'RETROATIVO', 'ANTECIPADO'] as const;
+export type MarcaHorario = (typeof MARCAS_HORARIO)[number];
+export const ROTULO_MARCA_HORARIO: Record<MarcaHorario, string> = {
+  NO_MOMENTO: 'No momento',
+  RETROATIVO: 'Retroativo',
+  ANTECIPADO: 'Antecipado',
+};
+
+export const SITUACOES_EVENTO = ['VALIDO', 'CORRECAO_PENDENTE', 'INCORRETO'] as const;
+export type SituacaoEvento = (typeof SITUACOES_EVENTO)[number];
+
+export const TIPOS_APROVACAO = ['CORRECAO', 'HORARIO', 'PESO', 'JUSTIFICATIVA', 'RELATORIO_TURNO'] as const;
+export type TipoAprovacao = (typeof TIPOS_APROVACAO)[number];
+export const ROTULO_TIPO_APROVACAO: Record<TipoAprovacao, string> = {
+  CORRECAO: 'Correção',
+  HORARIO: 'Lançamento fora de hora',
+  PESO: 'Peso fora da tolerância',
+  JUSTIFICATIVA: 'Justificativa',
+  RELATORIO_TURNO: 'Relatório do turno',
+};
+
+export const TIPOS_VOLUME_EXTRUSAO = ['SACO', 'BOBINA', 'CAIXA', 'BAG', 'OUTRO'] as const;
+export type TipoVolumeExtrusao = (typeof TIPOS_VOLUME_EXTRUSAO)[number];
+export const ROTULO_TIPO_VOLUME: Record<TipoVolumeExtrusao, string> = {
+  SACO: 'Saco',
+  BOBINA: 'Bobina',
+  CAIXA: 'Caixa',
+  BAG: 'Big bag',
+  OUTRO: 'Outro',
+};
+
+export const LAYOUTS_IMPORTACAO = ['IMPORTACAO_ORDENS', 'IMPORTACAO_PRODUTOS'] as const;
+export type LayoutImportacao = (typeof LAYOUTS_IMPORTACAO)[number];

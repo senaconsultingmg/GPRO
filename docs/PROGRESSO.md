@@ -10,6 +10,58 @@
 | 6 — Manutenção                                   | Não iniciada |            |
 | 7 — Offline e implantação                        | Não iniciada |            |
 
+## Fase 2 — OPs, rodadas e apontamento
+
+### O que foi feito
+
+**`packages/shared`**
+
+- Regras puras com testes de valores conhecidos: marca de horário e período válido (RN-08), conferência de peso (RN-07), código da divisão, horas disponíveis e meta (RN-04), conjuntos e produção do turno (RN-06), linha do tempo da máquina (RN-05), bloqueios de cavidade, tempos, produção esperada ponderada pelas cavidades ativas, OEE, PH real e consumo teórico (seção 10).
+- Esquemas Zod de OP, rodada, abertura, divisão, cada tipo de evento e fechamento; layouts de Excel e leitura de valores (datas, números pt-BR, unidades).
+
+**API**
+
+- Migration `fase2_producao`: ordem de produção, rodada, OP da rodada, turno, máquina no turno, divisão, evento, aprovação (pendências), importação e mapeamento de colunas; campo de parada programada prevista no horário de turno.
+- OPs (RN-01): digitação, alteração/cancelamento sem apontamento, encerramento, produção acumulada e saldo.
+- Importação de OPs e produtos por Excel: modelo para baixar, mapeamento de colunas (superusuário), validação do arquivo inteiro com erros por linha, tudo ou nada, simulação, histórico com arquivo original.
+- Rodadas (RN-02/RN-03): compatibilidade, ficha vigente congelada, cavidades por OP, uma única OP na extrusão, encerramento.
+- Turnos (RN-04 a RN-08, RN-11, RN-13): abertura com sugestão da escala, ligar máquinas (com herança do turno anterior), divisões com proposta de código/meta e saldo solto, todos os eventos com validação de sequência, NC de peso e marca de horário com pendências, fechamento com decisão por máquina e saldo solto, relatório do turno.
+- Dados de exemplo: 7 OPs e 4 rodadas (inclusive a rodada de 3 OPs no MOL-CAD-3 da INJ-01).
+
+**Front-end**
+
+- Ordens de produção, importação de Excel (validar/importar/histórico/mapeamento) e rodadas (cavidades por OP com o produto de cada cavidade).
+- **Apontamento para tablet:** abrir turno, cartões por máquina (verde/vermelho/cinza, parada com cronômetro, cavidades bloqueadas, realizado × meta), botões grandes por lançamento, ligar máquina por lista, divisões, fechamento, lista de lançamentos com marcas (retroativo/antecipado, peso NC, AVULSO).
+- Turnos e relatório do turno (imprimível).
+
+### Critérios de aceite
+
+| Critério                                                                                                                      | Como foi verificado                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Um turno completo pode ser lançado do início ao fim em tablet, com uma rodada de 3 OPs no mesmo molde                         | Teste de ponta a ponta `apps/web/e2e/fase2.spec.ts` (perfil Galaxy Tab S4): abre o turno, liga a INJ-01, cria as 3 divisões, lança produção, avulso, peso NC, parada/reinício, perda, bloqueio de cavidade, matéria-prima com hora divergente, fecha o turno e confere o relatório. Integração: `apps/api/src/turnos/turnos.test.ts` (18 testes, dois turnos completos). |
+| A divisão recebe o código `número do ERP-NN` e a meta calculada                                                               | `turnos.test.ts`: proposta `04508401001-01`, 10 h disponíveis (11 h − 60 min previstos) × PH 60 = 600; segundo turno `04508401001-02`; ajuste de horas recalcula a meta; extrusão sem ERP usa o número interno. Testes puros em `apontamento.test.ts`. Na tela, os botões "Criar divisão 04508401001-01…" mostram código e meta.                                         |
+| 3 conjuntos de 30 registram 90 peças; conjunto avulso exige confirmação e aparece destacado                                   | `turnos.test.ts` (90 peças, conjuntos 1–3; avulso sem confirmação → 422, com confirmação marcado como avulso) e ponta a ponta ("Total: 90 peças em 3 conjunto(s)", aviso de confirmação, selo AVULSO na lista e no relatório).                                                                                                                                           |
+| O saldo solto deixado em um turno é oferecido na abertura do seguinte, e a produção de cada turno fecha pela fórmula da RN-06 | `turnos.test.ts`: turno 1 deixa 12 → produção 168 + 12 = 180; turno 2 recebe a oferta de 12 (sem confirmar → 422), confirma, etiqueta 30 → produção 30 + 0 − 12 = 18; OP acumulada 198. Ponta a ponta: o segundo apontador vê "O turno anterior deixou 12 peça(s)".                                                                                                      |
+| Peso fora da tolerância marca NC e exige justificativa                                                                        | `turnos.test.ts` (400 g contra 383,33 g ± 3% → 422 sem justificativa; com justificativa, NC e pendência PESO) e ponta a ponta (aviso NC, justificativa obrigatória, selo "Peso NC").                                                                                                                                                                                     |
+| Lançamento com hora divergente fica marcado como retroativo ou antecipado                                                     | Testes puros (tolerância parametrizável) e `turnos.test.ts` (no momento, antecipado +30 min, início retroativo, pendências HORARIO, fora do período → 422); ponta a ponta com o ajuste de ±20 min.                                                                                                                                                                       |
+| Bloquear uma cavidade reduz a produção esperada da OP correspondente                                                          | Teste puro (2 cavidades, 3 h com 1 bloqueada: 2280 → 1920) e `turnos.test.ts` (relatório: esperada da OP com cavidade bloqueada ≈ 90 peças menor, 1,5 h × 60 pç/h; OP de outra cavidade não muda).                                                                                                                                                                       |
+
+### Resultado das verificações finais
+
+- Migrations: `pnpm migrate` sem pendências; aplicadas do zero nos bancos de teste, e2e e Docker.
+- Testes: shared 61/61, API 81/81, web 3/3, ponta a ponta 7/7 (Fases 1 e 2).
+- Lint sem problemas, Prettier sem diferenças, typecheck sem erros.
+- Docker: imagens reconstruídas e `docker compose up` com volume vazio (duas migrations, dados de exemplo, login, OPs, rodadas, modelo de Excel e tela de apontamento respondendo). Mesma ressalva de rede da sandbox da Fase 1.
+
+### Pendências e observações
+
+- Etiquetas (com código GS1-128, sem QR Code), impressão Zebra, lotes e estoque: **Fase 3**. Os conjuntos e volumes já ficam no evento de saída para gerar as etiquetas.
+- Decisão das pendências do líder, correções e aprovação do relatório: **Fase 4**.
+- Painel em tempo real e indicadores por período: **Fase 5** (as fórmulas já estão em `packages/shared`).
+- Solicitações de manutenção a partir das paradas marcadas: **Fase 6**.
+- Lançamento offline e hora do dispositivo: **Fase 7**.
+- O OEE de um turno de poucos minutos fica distorcido (produção esperada perto de zero); em turnos reais não ocorre. Performance acima de 100% aparece com alerta (P8).
+
 ## Fase 1 — Fundação e cadastros
 
 ### O que foi feito

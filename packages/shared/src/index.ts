@@ -6,3 +6,8 @@ export * from './escala.js';
 export * from './esquemas.js';
 export * from './parametros.js';
 export * from './datas.js';
+export * from './tempo.js';
+export * from './apontamento.js';
+export * from './indicadores.js';
+export * from './esquemas-producao.js';
+export * from './layouts-excel.js';
