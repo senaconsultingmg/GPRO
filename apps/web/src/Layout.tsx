@@ -35,6 +35,10 @@ import {
   IconUsersGroup,
   IconClock,
   IconReport,
+  IconBarrel,
+  IconBuildingWarehouse,
+  IconBarcode,
+  IconSettingsCog,
   IconListNumbers,
   IconStack2,
   IconFileSpreadsheet,
@@ -67,6 +71,29 @@ const GRUPOS: { titulo: string; itens: ItemMenu[] }[] = [
         caminho: '/turnos',
         icone: <IconReport size={18} />,
         permissao: 'turnos.ler',
+      },
+    ],
+  },
+  {
+    titulo: 'Materiais e estoque',
+    itens: [
+      {
+        rotulo: 'Matéria-prima',
+        caminho: '/materia-prima',
+        icone: <IconBarrel size={18} />,
+        permissao: 'materiaprima.ler',
+      },
+      {
+        rotulo: 'Estoque',
+        caminho: '/estoque',
+        icone: <IconBuildingWarehouse size={18} />,
+        permissao: 'estoque.ler',
+      },
+      {
+        rotulo: 'Etiquetas',
+        caminho: '/etiquetas',
+        icone: <IconBarcode size={18} />,
+        permissao: 'etiquetas.ler',
       },
     ],
   },
@@ -241,6 +268,9 @@ export function Layout() {
             </Menu.Target>
             <Menu.Dropdown>
               <Menu.Label>{usuario?.login}</Menu.Label>
+              <Menu.Item leftSection={<IconSettingsCog size={16} />} component={Link} to="/posto">
+                Configurar este posto
+              </Menu.Item>
               <Menu.Item leftSection={<IconKey size={16} />} onClick={() => setTrocandoSenha(true)}>
                 Trocar senha
               </Menu.Item>
@@ -281,7 +311,7 @@ export function Layout() {
           <Group px="sm" mt="xl" gap={4}>
             <IconSettings size={14} color="gray" />
             <Badge variant="outline" color="gray" size="sm">
-              Fase 2
+              Fase 3
             </Badge>
           </Group>
         </ScrollArea>

@@ -5,6 +5,7 @@ import {
   Button,
   Checkbox,
   Group,
+  MultiSelect,
   NumberInput,
   Select,
   SimpleGrid,
@@ -13,20 +14,20 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
-import { IconAlertTriangle, IconMinus, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconAlertTriangle, IconBarcode, IconMinus, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   avaliarPeso,
   esquemaEvento,
   ROTULO_TIPO_VOLUME,
-  TIPOS_MATERIAL,
   usaMolde,
   type TipoEvento,
-  type TipoProduto,
   type TipoVolumeExtrusao,
 } from '@apontamento/shared';
 import { api } from '../../api/cliente';
 import { useLista } from '../../componentes/PaginaCadastro';
+import { imprimirComAviso } from '../../componentes/notificarImpressao';
+import { useLotes } from '../MateriaPrima';
 import {
   AlertaErroApi,
   errosApiPorCampo,
@@ -39,6 +40,45 @@ import { CampoHora } from './CampoHora';
 import { deCampoHora, paraCampoHora, type MaquinaNoTurno, type TurnoDetalhe } from './tipos';
 
 export type TipoLancamento = Exclude<TipoEvento, 'SALDO_AVULSO_DEIXADO' | 'SALDO_AVULSO_RECEBIDO'>;
+
+/** Leitura da etiqueta do lote/mistura (ou número do lote), com lista dos lotes com saldo como alternativa. */
+function LeituraLote({
+  valor,
+  aoMudar,
+  erro,
+}: {
+  valor: string;
+  aoMudar: (v: string) => void;
+  erro?: string;
+}) {
+  const { data: lotes = [] } = useLotes(true);
+  return (
+    <Group grow align="flex-start">
+      <TextInput
+        label="Etiqueta do lote ou mistura"
+        description="Leia o código de barras ou digite o código / número do lote."
+        size="lg"
+        leftSection={<IconBarcode />}
+        autoFocus
+        value={valor}
+        onChange={(e) => aoMudar(e.currentTarget.value)}
+        error={erro}
+      />
+      <Select
+        label="ou escolha o lote"
+        size="lg"
+        searchable
+        clearable
+        data={lotes.map((l) => ({
+          value: l.numero,
+          label: `${l.material.codigo} · ${l.numero} · ${fmtNumero(l.saldo)} kg`,
+        }))}
+        value={lotes.some((l) => l.numero === valor) ? valor : null}
+        onChange={(v) => aoMudar(v ?? '')}
+      />
+    </Group>
+  );
+}
 
 const COM_DIVISAO: TipoLancamento[] = [
   'SAIDA_PRODUCAO',
@@ -78,10 +118,11 @@ export function FormularioLancamento({
     { tipoVolume: 'SACO', pesoKg: '' },
   ]);
   const [operador, setOperador] = useState('');
+  const [indiceFluidez, setIndiceFluidez] = useState<number | string>('');
+  const [produtosDestino, setProdutosDestino] = useState<string[]>([]);
   const [tipoPerdaId, setTipoPerdaId] = useState<string | null>(null);
   const [pesoKg, setPesoKg] = useState<number | string>('');
   const [quantidadePecas, setQuantidadePecas] = useState<number | string>('');
-  const [materialId, setMaterialId] = useState<string | null>(null);
   const [lote, setLote] = useState('');
   const [quantidade, setQuantidade] = useState<number | string>('');
   const [divisaoDestinoId, setDivisaoDestinoId] = useState<string | null>(null);
@@ -157,6 +198,8 @@ export function FormularioLancamento({
               divisaoId,
               volumes: volumes.map((v) => ({ tipoVolume: v.tipoVolume, pesoKg: numeroOuNulo(v.pesoKg) })),
               operador: operador || null,
+              indiceFluidez: numeroOuNulo(indiceFluidez),
+              produtosDestino,
             };
       case 'PERDA':
         return {
@@ -168,24 +211,17 @@ export function FormularioLancamento({
         };
       case 'ENTRADA_MATERIA_PRIMA':
       case 'DEVOLUCAO_MATERIA_PRIMA':
-        return { ...base, divisaoId, materialId, lote, quantidadeKg: numeroOuNulo(quantidade) };
+        return { ...base, divisaoId, leitura: lote, quantidadeKg: numeroOuNulo(quantidade) };
       case 'TRANSFERENCIA':
         return {
           ...base,
           divisaoId,
-          materialId,
-          lote,
+          leitura: lote,
           quantidadeKg: numeroOuNulo(quantidade),
           divisaoDestinoId,
         };
       case 'ENTRADA_SEMIACABADO':
-        return {
-          ...base,
-          divisaoId,
-          produtoId: materialId,
-          quantidade: numeroOuNulo(quantidade),
-          lote: lote || null,
-        };
+        return { ...base, divisaoId, leitura: lote };
       case 'BLOQUEIO_CAVIDADE':
         return { ...base, cavidade, motivo };
       case 'DESBLOQUEIO_CAVIDADE':
@@ -197,12 +233,19 @@ export function FormularioLancamento({
 
   const enviar = useMutation({
     mutationFn: (c: Record<string, unknown>) =>
-      api.post<{ avisos: string[] }>(`/turnos/${turno.id}/eventos`, c),
+      api.post<{ avisos: string[]; etiquetas: { id: string; codigo: string }[] }>(
+        `/turnos/${turno.id}/eventos`,
+        c,
+      ),
     onSuccess: (r) => {
       cliente.invalidateQueries({ queryKey: ['turno', turno.id] });
       notificarSucesso('Lançamento registrado.');
       for (const a of r.avisos ?? []) notificarSucesso(a);
       aoConcluir();
+      // Uma etiqueta por conjunto/volume/perda/devolução/transferência; falha deixa pendente.
+      void imprimirComAviso(r.etiquetas ?? []).then(() =>
+        cliente.invalidateQueries({ queryKey: ['etiquetas'] }),
+      );
     },
     onError: (e) => setErros(errosApiPorCampo(e)),
   });
@@ -239,10 +282,6 @@ export function FormularioLancamento({
         </Button>
       ))}
     </SimpleGrid>
-  );
-
-  const materiais = produtos.filter(
-    (p) => TIPOS_MATERIAL.includes(p.tipo as TipoProduto) && p.tipo !== 'SEMIACABADO',
   );
 
   return (
@@ -466,6 +505,26 @@ export function FormularioLancamento({
             onChange={(e) => setOperador(e.currentTarget.value)}
             error={erros.operador}
           />
+          <Group grow align="flex-start">
+            <NumberInput
+              label="Média de fluidez (opcional)"
+              size="lg"
+              decimalSeparator=","
+              hideControls
+              value={indiceFluidez}
+              onChange={setIndiceFluidez}
+            />
+            <MultiSelect
+              label="Produtos a que se destina"
+              size="lg"
+              searchable
+              data={produtos
+                .filter((p) => ['ACABADO', 'SEMIACABADO'].includes(p.tipo as string))
+                .map((p) => ({ value: p.id, label: p.codigo as string }))}
+              value={produtosDestino}
+              onChange={setProdutosDestino}
+            />
+          </Group>
         </>
       )}
 
@@ -506,23 +565,8 @@ export function FormularioLancamento({
         tipo === 'DEVOLUCAO_MATERIA_PRIMA' ||
         tipo === 'TRANSFERENCIA') && (
         <>
-          <Select
-            label="Material"
-            size="lg"
-            searchable
-            data={materiais.map((p) => ({ value: p.id, label: `${p.codigo} — ${p.descricao}` }))}
-            value={materialId}
-            onChange={setMaterialId}
-            error={erros.materialId && 'Escolha o material.'}
-          />
+          <LeituraLote valor={lote} aoMudar={setLote} erro={erros.leitura} />
           <Group grow>
-            <TextInput
-              label="Lote"
-              size="lg"
-              value={lote}
-              onChange={(e) => setLote(e.currentTarget.value)}
-              error={erros.lote}
-            />
             <NumberInput
               label="Quantidade"
               size="lg"
@@ -553,36 +597,16 @@ export function FormularioLancamento({
       )}
 
       {tipo === 'ENTRADA_SEMIACABADO' && (
-        <>
-          <Select
-            label="Semiacabado (digite o código)"
-            size="lg"
-            searchable
-            data={produtos
-              .filter((p) => p.tipo === 'SEMIACABADO')
-              .map((p) => ({ value: p.id, label: `${p.codigo} — ${p.descricao}` }))}
-            value={materialId}
-            onChange={setMaterialId}
-            error={erros.produtoId && 'Escolha o produto.'}
-          />
-          <Group grow>
-            <NumberInput
-              label="Quantidade"
-              size="lg"
-              rightSection={<Text c="dimmed">pç</Text>}
-              hideControls
-              value={quantidade}
-              onChange={setQuantidade}
-              error={erros.quantidade}
-            />
-            <TextInput
-              label="Lote / etiqueta (opcional)"
-              size="lg"
-              value={lote}
-              onChange={(e) => setLote(e.currentTarget.value)}
-            />
-          </Group>
-        </>
+        <TextInput
+          label="Etiqueta do semiacabado"
+          description="Leia o código de barras ou digite o código (ex.: T2-0000123)."
+          size="xl"
+          leftSection={<IconBarcode />}
+          autoFocus
+          value={lote}
+          onChange={(e) => setLote(e.currentTarget.value)}
+          error={erros.leitura}
+        />
       )}
 
       {(tipo === 'BLOQUEIO_CAVIDADE' || tipo === 'DESBLOQUEIO_CAVIDADE') && (

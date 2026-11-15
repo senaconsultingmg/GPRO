@@ -1,6 +1,7 @@
-# Sobe o sistema completo: banco, API e front-end.
+# Sobe o sistema completo: banco, API, front-end e agente de impressão.
 # Funciona sem configuração, mas antes de usar em produção copie .env.example para .env
-# e troque as senhas e o segredo. O agente de impressão entra na Fase 3.
+# e troque as senhas e o segredo. O agente de impressão deve rodar na rede da fábrica
+# (junto do servidor local ou em um computador da rede, quando a aplicação estiver na nuvem).
 name: apontamento
 
 services:
@@ -46,6 +47,20 @@ services:
         condition: service_healthy
     ports:
       - '${PORTA_WEB:-8080}:80'
+
+  agente-impressao:
+    build:
+      context: .
+      dockerfile: apps/print-agent/Dockerfile
+    restart: unless-stopped
+    environment:
+      AGENTE_TOKEN: ${AGENTE_TOKEN:-troque-este-token}
+      AGENTE_PORTAS: ${AGENTE_PORTAS:-9100}
+      AGENTE_ORIGENS: ${AGENTE_ORIGENS:-*}
+      # Deixe vazio para imprimir de verdade; com um diretório, grava o ZPL em arquivos (simulação).
+      AGENTE_SIMULAR_DIR: ${AGENTE_SIMULAR_DIR:-}
+    ports:
+      - '${PORTA_AGENTE:-9180}:9180'
 
 volumes:
   dados-banco:

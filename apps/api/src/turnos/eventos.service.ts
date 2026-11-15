@@ -12,6 +12,7 @@ import {
   usaMolde,
   validarBloqueios,
   validarLinhaTempo,
+  lerCodigoEtiqueta,
   type EventoEntrada,
   type EventoTempo,
   type TipoMaquina,
@@ -23,6 +24,8 @@ import { ParametrosService } from '../parametros/parametros.service.js';
 import { conflito, ErroNegocio, naoEncontrado } from '../comum/erros.js';
 import type { UsuarioAutenticado } from '../comum/decoradores.js';
 import { producaoPorOrdem } from '../ordens/producao-ordem.js';
+import { emitirEtiquetas, proximoNumeroLote, type NovaEtiqueta } from '../etiquetas/emissao.js';
+import { baixarLote, resolverLote } from '../materia-prima/materia-prima.service.js';
 
 /** Eventos de saldo solto: só são gerados pela abertura de divisão e pelo fechamento do turno. */
 export interface EventoSaldo {
@@ -41,6 +44,38 @@ export interface ContextoLancamento {
   usuario: UsuarioAutenticado;
   dispositivo: string;
   agora: Date;
+  /** Posto (dispositivo do cadastro) que emite as etiquetas — cabeçalho x-posto. */
+  postoId?: string | null;
+}
+
+type DivisaoComOrdem = Prisma.DivisaoOpGetPayload<{
+  include: { ordem: { include: { produto: true } }; rodadaOp: { include: { fichaTecnica: true } } };
+}>;
+
+/** Consumo líquido do lote pela OP (entradas + transferências recebidas − devoluções − transferências enviadas). */
+async function consumoLiquidoLote(tx: Transacao, ordemId: string, loteId: string): Promise<number> {
+  const divisoes = (await tx.divisaoOp.findMany({ where: { ordemId }, select: { id: true } })).map(
+    (d) => d.id,
+  );
+  const eventos = await tx.evento.findMany({
+    where: {
+      tipo: { in: ['ENTRADA_MATERIA_PRIMA', 'DEVOLUCAO_MATERIA_PRIMA', 'TRANSFERENCIA'] },
+      situacao: { not: 'INCORRETO' },
+      dados: { path: ['loteId'], equals: loteId },
+    },
+  });
+  let total = 0;
+  for (const e of eventos) {
+    const d = e.dados as { quantidadeKg: number; divisaoDestinoId?: string };
+    const daOp = e.divisaoId !== null && divisoes.includes(e.divisaoId);
+    if (e.tipo === 'ENTRADA_MATERIA_PRIMA' && daOp) total += d.quantidadeKg;
+    if (e.tipo === 'DEVOLUCAO_MATERIA_PRIMA' && daOp) total -= d.quantidadeKg;
+    if (e.tipo === 'TRANSFERENCIA') {
+      if (daOp) total -= d.quantidadeKg;
+      if (d.divisaoDestinoId && divisoes.includes(d.divisaoDestinoId)) total += d.quantidadeKg;
+    }
+  }
+  return arred(total);
 }
 
 const TIPOS_TEMPO = ['INICIO_MAQUINA', 'FIM_MAQUINA', 'PARADA', 'REINICIO', 'SAIDA_PRODUCAO'] as const;
@@ -55,14 +90,25 @@ export class EventosService {
     tx: Transacao,
     ctx: ContextoLancamento,
     entrada: EventoEntrada | EventoSaldo,
-  ): Promise<{ evento: Prisma.EventoGetPayload<object>; duplicado: boolean; avisos: string[] }> {
+  ): Promise<{
+    evento: Prisma.EventoGetPayload<object>;
+    duplicado: boolean;
+    avisos: string[];
+    etiquetas: { id: string; codigo: string }[];
+  }> {
     const { turno, usuario, agora } = ctx;
 
     // Sem duplicidade: o identificador é gerado no dispositivo.
     const existente = await tx.evento.findUnique({ where: { id: entrada.id } });
     if (existente) {
-      if (existente.turnoId === turno.id && existente.tipo === entrada.tipo)
-        return { evento: existente, duplicado: true, avisos: [] };
+      if (existente.turnoId === turno.id && existente.tipo === entrada.tipo) {
+        const etiquetas = await tx.etiqueta.findMany({
+          where: { eventoId: existente.id },
+          select: { id: true, codigo: true },
+          orderBy: { sequencia: 'asc' },
+        });
+        return { evento: existente, duplicado: true, avisos: [], etiquetas };
+      }
       throw conflito('Identificador de evento já utilizado por outro lançamento.');
     }
 
@@ -113,6 +159,15 @@ export class EventosService {
     let pesoNaoConforme = false;
     let descricaoNc: string | null = null;
     const avisos: string[] = [];
+    let loteLido: { id: string; numero: string; materialId: string } | null = null;
+    let semiacabadoLido: {
+      id: string;
+      situacao: string;
+      localEstoqueId: string | null;
+      produtoId: string;
+      quantidade: number;
+    } | null = null;
+    let tipoPerdaDescricao = '';
 
     switch (entrada.tipo) {
       case 'PARADA': {
@@ -187,6 +242,8 @@ export class EventosService {
           dados = {
             volumes: entrada.volumes.map((v, i) => ({ numero: i + 1, ...v })),
             operador: entrada.operador,
+            indiceFluidez: entrada.indiceFluidez ?? null,
+            produtosDestino: entrada.produtosDestino,
           };
         }
         break;
@@ -195,6 +252,7 @@ export class EventosService {
         const tipo = await tx.tipoPerda.findUnique({ where: { id: entrada.tipoPerdaId } });
         if (!tipo?.ativo) throw new ErroNegocio('Tipo de perda inexistente ou inativo.');
         quantidade = entrada.quantidadePecas ?? null;
+        tipoPerdaDescricao = tipo.descricao;
         dados = {
           tipoPerdaId: tipo.id,
           contaComoRefugo: tipo.contaComoRefugo,
@@ -206,18 +264,32 @@ export class EventosService {
       case 'ENTRADA_MATERIA_PRIMA':
       case 'DEVOLUCAO_MATERIA_PRIMA':
       case 'TRANSFERENCIA': {
-        const material = await tx.produto.findUnique({ where: { id: entrada.materialId } });
+        // Fase 3: o material vem da etiqueta do lote/mistura (ou do número do lote).
+        const lote = await resolverLote(tx, entrada.leitura);
         if (
-          !material ||
-          !TIPOS_MATERIAL.includes(material.tipo as TipoProduto) ||
-          material.tipo === 'SEMIACABADO'
+          !TIPOS_MATERIAL.includes(lote.material.tipo as TipoProduto) ||
+          lote.material.tipo === 'SEMIACABADO'
         ) {
           throw new ErroNegocio(
-            'Material inválido: escolha matéria-prima, aditivo, extrusado, moído, reciclado ou mistura.',
+            'O lote lido não é de matéria-prima, aditivo, extrusado, moído, reciclado ou mistura.',
           );
         }
         quantidade = entrada.quantidadeKg;
-        dados = { materialId: material.id, lote: entrada.lote, quantidadeKg: entrada.quantidadeKg };
+        dados = {
+          materialId: lote.materialId,
+          loteId: lote.id,
+          lote: lote.numero,
+          quantidadeKg: entrada.quantidadeKg,
+        };
+        loteLido = { id: lote.id, numero: lote.numero, materialId: lote.materialId };
+        if (entrada.tipo !== 'ENTRADA_MATERIA_PRIMA') {
+          const consumido = await consumoLiquidoLote(tx, divisao!.ordemId, lote.id);
+          if (consumido + 1e-9 < entrada.quantidadeKg) {
+            throw new ErroNegocio(
+              `A OP consumiu ${consumido.toLocaleString('pt-BR')} kg do lote ${lote.numero}; não é possível ${entrada.tipo === 'TRANSFERENCIA' ? 'transferir' : 'devolver'} ${entrada.quantidadeKg.toLocaleString('pt-BR')} kg.`,
+            );
+          }
+        }
         if (entrada.tipo === 'TRANSFERENCIA') {
           const destino = await tx.divisaoOp.findUnique({
             where: { id: entrada.divisaoDestinoId },
@@ -233,16 +305,39 @@ export class EventosService {
             divisaoDestinoId: destino.id,
             maquinaDestinoId: destino.maquinaId,
             codigoDivisaoDestino: destino.codigo,
+            maquinaDestino: destino.maquina.codigo,
           };
         }
         break;
       }
       case 'ENTRADA_SEMIACABADO': {
-        const produto = await tx.produto.findUnique({ where: { id: entrada.produtoId } });
-        if (!produto || produto.tipo !== 'SEMIACABADO')
-          throw new ErroNegocio('Produto informado não é semiacabado.');
-        quantidade = entrada.quantidade;
-        dados = { produtoId: produto.id, quantidade: entrada.quantidade, lote: entrada.lote ?? null };
+        const codigo = lerCodigoEtiqueta(entrada.leitura);
+        const etq = codigo
+          ? await tx.etiqueta.findUnique({ where: { codigo }, include: { produto: true } })
+          : null;
+        if (!etq) throw new ErroNegocio(`Etiqueta "${entrada.leitura.trim()}" não encontrada.`);
+        if (etq.tipo !== 'PRODUTO' || etq.produto.tipo !== 'SEMIACABADO')
+          throw new ErroNegocio(`A etiqueta ${etq.codigo} não é de semiacabado.`);
+        if (!['EMITIDA', 'RECEBIDA'].includes(etq.situacao)) {
+          throw new ErroNegocio(
+            `A etiqueta ${etq.codigo} está ${etq.situacao === 'CONSUMIDA' ? 'consumida' : etq.situacao.toLowerCase()} e não pode entrar na produção.`,
+          );
+        }
+        quantidade = etq.quantidade;
+        dados = {
+          produtoId: etq.produtoId,
+          quantidade: etq.quantidade,
+          etiquetaId: etq.id,
+          etiqueta: etq.codigo,
+          lote: etq.codigo,
+        };
+        semiacabadoLido = {
+          id: etq.id,
+          situacao: etq.situacao,
+          localEstoqueId: etq.localEstoqueId,
+          produtoId: etq.produtoId,
+          quantidade: etq.quantidade,
+        };
         break;
       }
       case 'BLOQUEIO_CAVIDADE':
@@ -360,6 +455,45 @@ export class EventosService {
       });
     }
 
+    // Fase 3: estoque e etiquetas do lançamento.
+    if (entrada.tipo === 'ENTRADA_MATERIA_PRIMA' && loteLido) {
+      await baixarLote(tx, {
+        loteId: loteLido.id,
+        loteNumero: loteLido.numero,
+        produtoId: loteLido.materialId,
+        quantidadeKg: entrada.quantidadeKg,
+        tipo: 'CONSUMO_PRODUCAO',
+        usuarioId: usuario.id,
+        eventoId: evento.id,
+      });
+    }
+    if (semiacabadoLido) {
+      if (semiacabadoLido.situacao === 'RECEBIDA' && semiacabadoLido.localEstoqueId) {
+        await tx.movimentoEstoque.create({
+          data: {
+            tipo: 'CONSUMO_SEMIACABADO',
+            produtoId: semiacabadoLido.produtoId,
+            etiquetaId: semiacabadoLido.id,
+            localOrigemId: semiacabadoLido.localEstoqueId,
+            quantidade: semiacabadoLido.quantidade,
+            eventoId: evento.id,
+            usuarioId: usuario.id,
+          },
+        });
+      }
+      await tx.etiqueta.update({ where: { id: semiacabadoLido.id }, data: { situacao: 'CONSUMIDA' } });
+    }
+    const etiquetas = await this.gerarEtiquetas(
+      tx,
+      ctx,
+      entrada,
+      evento.id,
+      mt.maquina.codigo,
+      divisao,
+      dados,
+      tipoPerdaDescricao,
+    );
+
     if (entrada.tipo === 'SAIDA_PRODUCAO' && divisao) {
       const produzido = (await producaoPorOrdem(tx, [divisao.ordemId])).get(divisao.ordemId) ?? 0;
       if (produzido > divisao.ordem.quantidade) {
@@ -368,7 +502,122 @@ export class EventosService {
         );
       }
     }
-    return { evento, duplicado: false, avisos };
+    return { evento, duplicado: false, avisos, etiquetas };
+  }
+
+  /** Etiquetas do lançamento (seção 8): uma por conjunto ou volume; uma por perda, devolução e transferência. */
+  private async gerarEtiquetas(
+    tx: Transacao,
+    ctx: ContextoLancamento,
+    entrada: EventoEntrada | EventoSaldo,
+    eventoId: string,
+    maquinaCodigo: string,
+    divisao: DivisaoComOrdem | null,
+    dados: Record<string, unknown>,
+    tipoPerda: string,
+  ) {
+    if (!divisao) return [];
+    const base = { eventoId, divisaoId: divisao.id, turnoId: ctx.turno.id };
+    const itens: NovaEtiqueta[] = [];
+    if (entrada.tipo === 'SAIDA_PRODUCAO') {
+      const conjuntos =
+        (dados.conjuntos as { numero: number; quantidade: number; avulso: boolean }[] | undefined) ?? [];
+      if (conjuntos.length) {
+        conjuntos.forEach((c) =>
+          itens.push({
+            ...base,
+            tipo: 'PRODUTO',
+            produtoId: divisao.ordem.produtoId,
+            quantidade: c.quantidade,
+            unidade: 'PECA',
+            pesoKg: dados.pesoMedioG ? arred((Number(dados.pesoMedioG) * c.quantidade) / 1000) : null,
+            avulso: c.avulso,
+            numeroNoLancamento: c.numero,
+            totalNoLancamento: conjuntos.length,
+            dados: { embalagem: String(dados.tipoEmbalagem ?? '') },
+          }),
+        );
+      } else {
+        // Extrusão: os volumes da divisão formam um lote de extrusado.
+        let lote = await tx.loteMaterial.findFirst({ where: { divisaoId: divisao.id } });
+        const volumes = (dados.volumes as { tipoVolume: string; pesoKg: number }[]) ?? [];
+        const total = arred(volumes.reduce((s, v) => s + v.pesoKg, 0));
+        if (!lote) {
+          lote = await tx.loteMaterial.create({
+            data: {
+              numero: await proximoNumeroLote(tx),
+              materialId: divisao.ordem.produtoId,
+              origem: 'EXTRUSAO',
+              quantidadeInicial: 0,
+              indiceFluidez: (dados.indiceFluidez as number | null) ?? null,
+              cor: divisao.ordem.produto.cor,
+              ordemExtrusaoId: divisao.ordemId,
+              divisaoId: divisao.id,
+              criadoPorId: ctx.usuario.id,
+            },
+          });
+        }
+        lote = await tx.loteMaterial.update({
+          where: { id: lote.id },
+          data: {
+            quantidadeInicial: { increment: total },
+            ...(dados.indiceFluidez ? { indiceFluidez: dados.indiceFluidez as number } : {}),
+          },
+        });
+        const destinos = await tx.produto.findMany({
+          where: { id: { in: (dados.produtosDestino as string[]) ?? [] } },
+          select: { codigo: true },
+        });
+        volumes.forEach((v, i) =>
+          itens.push({
+            ...base,
+            tipo: 'EXTRUSAO',
+            produtoId: divisao.ordem.produtoId,
+            quantidade: v.pesoKg,
+            unidade: 'KG',
+            pesoKg: v.pesoKg,
+            loteId: lote.id,
+            numeroNoLancamento: i + 1,
+            totalNoLancamento: volumes.length,
+            dados: {
+              operador: String(dados.operador ?? ''),
+              destinos: destinos.map((d) => d.codigo).join(', '),
+              tipoVolume: v.tipoVolume,
+            },
+          }),
+        );
+      }
+    } else if (entrada.tipo === 'PERDA') {
+      const peso = dados.pesoKg as number | null;
+      const pecas = dados.quantidadePecas as number | null;
+      itens.push({
+        ...base,
+        tipo: 'PERDA',
+        produtoId: divisao.ordem.produtoId,
+        quantidade: peso ?? pecas ?? 0,
+        unidade: peso != null ? 'KG' : 'PECA',
+        pesoKg: peso,
+        dados: { tipoPerda, quantidadePecas: pecas },
+      });
+    } else if (entrada.tipo === 'DEVOLUCAO_MATERIA_PRIMA' || entrada.tipo === 'TRANSFERENCIA') {
+      const devolucao = entrada.tipo === 'DEVOLUCAO_MATERIA_PRIMA';
+      itens.push({
+        ...base,
+        tipo: 'DEVOLUCAO_TRANSFERENCIA',
+        produtoId: dados.materialId as string,
+        quantidade: entrada.quantidadeKg,
+        unidade: 'KG',
+        pesoKg: entrada.quantidadeKg,
+        loteId: dados.loteId as string,
+        dados: {
+          operacao: devolucao ? 'DEVOLUÇÃO' : 'TRANSFERÊNCIA',
+          origem: `${maquinaCodigo} · ${divisao.codigo}`,
+          destino: devolucao ? 'Matéria-prima' : `${dados.maquinaDestino} · ${dados.codigoDivisaoDestino}`,
+        },
+      });
+    }
+    const criadas = await emitirEtiquetas(tx, ctx.postoId, ctx.usuario.id, itens);
+    return criadas.map((e) => ({ id: e.id, codigo: e.codigo }));
   }
 
   novoId(): string {

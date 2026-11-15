@@ -148,6 +148,35 @@ enum SituacaoAprovacao {
   REJEITADA
 }
 
+enum SituacaoEtiqueta {
+  EMITIDA
+  RECEBIDA
+  CONSUMIDA
+  EXPORTADA
+  CANCELADA
+}
+
+enum OrigemLote {
+  COMPRA
+  EXTRUSAO
+  MISTURA
+  MOIDO
+  RECICLADO
+}
+
+enum TipoMovimento {
+  ENTRADA_COMPRA
+  ENTRADA_RETORNO
+  ENTRADA_EXTRUSAO
+  ENTRADA_MISTURA
+  SAIDA_MISTURA
+  CONSUMO_PRODUCAO
+  DEVOLUCAO_PRODUCAO
+  TRANSFERENCIA_LOCAL
+  RECEBIMENTO_PRODUTO
+  CONSUMO_SEMIACABADO
+}
+
 enum TipoParametro {
   INTEIRO
   DECIMAL
@@ -170,18 +199,25 @@ model Usuario {
   criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm    DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
-  equipe  Equipe?            @relation(fields: [equipeId], references: [id])
+  equipe  Equipe?             @relation(fields: [equipeId], references: [id])
   sessoes SessaoDispositivo[]
 
-  fichasCriadas  FichaTecnica[] @relation("FichaCriadaPor")
-  fichasAprovadas FichaTecnica[] @relation("FichaAprovadaPor")
-  ordensCriadas   OrdemProducao[]
-  rodadasCriadas  Rodada[]
-  turnos          TurnoApontamento[]
-  eventos         Evento[]
-  aprovacoesSolicitadas Aprovacao[] @relation("AprovacaoSolicitante")
-  aprovacoesDecididas   Aprovacao[] @relation("AprovacaoAprovador")
-  importacoes     Importacao[]
+  fichasCriadas         FichaTecnica[]     @relation("FichaCriadaPor")
+  fichasAprovadas       FichaTecnica[]     @relation("FichaAprovadaPor")
+  ordensCriadas         OrdemProducao[]
+  rodadasCriadas        Rodada[]
+  turnos                TurnoApontamento[]
+  eventos               Evento[]
+  aprovacoesSolicitadas Aprovacao[]        @relation("AprovacaoSolicitante")
+  aprovacoesDecididas   Aprovacao[]        @relation("AprovacaoAprovador")
+  importacoes           Importacao[]
+
+  etiquetas    Etiqueta[]
+  lotesCriados LoteMaterial[]
+  misturas     Mistura[]
+  movimentos   MovimentoEstoque[]
+  recebimentos Recebimento[]
+  impressoes   ImpressaoEtiqueta[]
 
   @@map("usuario")
 }
@@ -220,13 +256,13 @@ model RegistroAuditoria {
 }
 
 model ParametroSistema {
-  chave          String        @id
-  valor          String
-  tipo           TipoParametro
-  opcoes         String[]
-  descricao      String
-  atualizadoEm   DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
-  atualizadoPorId String?      @map("atualizado_por_id") @db.Uuid
+  chave           String        @id
+  valor           String
+  tipo            TipoParametro
+  opcoes          String[]
+  descricao       String
+  atualizadoEm    DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  atualizadoPorId String?       @map("atualizado_por_id") @db.Uuid
 
   @@map("parametro_sistema")
 }
@@ -234,19 +270,19 @@ model ParametroSistema {
 // ---------------- Turnos e escala ----------------
 
 model HorarioTurno {
-  id         String          @id @default(uuid()) @db.Uuid
-  nome       String          @unique
-  modalidade ModalidadeTurno
+  id                          String          @id @default(uuid()) @db.Uuid
+  nome                        String          @unique
+  modalidade                  ModalidadeTurno
   /// Hora local (America/Sao_Paulo) no formato HH:MM.
-  horaInicio String          @map("hora_inicio")
-  horaFim    String          @map("hora_fim")
+  horaInicio                  String          @map("hora_inicio")
+  horaFim                     String          @map("hora_fim")
   /// 0 = domingo ... 6 = sábado.
-  diasSemana Int[]           @map("dias_semana")
+  diasSemana                  Int[]           @map("dias_semana")
   /// Minutos de parada programada prevista no turno (ex.: refeição), descontados das horas disponíveis.
-  paradaProgramadaPrevistaMin Int @default(0) @map("parada_programada_prevista_min")
-  ativo      Boolean         @default(true)
-  criadoEm   DateTime        @default(now()) @map("criado_em") @db.Timestamptz(3)
-  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  paradaProgramadaPrevistaMin Int             @default(0) @map("parada_programada_prevista_min")
+  ativo                       Boolean         @default(true)
+  criadoEm                    DateTime        @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm                DateTime        @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
   escalas Escala[]
   turnos  TurnoApontamento[]
@@ -255,11 +291,11 @@ model HorarioTurno {
 }
 
 model Equipe {
-  id        String   @id @default(uuid()) @db.Uuid
-  letra     String   @unique
-  descricao String?
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  id           String   @id @default(uuid()) @db.Uuid
+  letra        String   @unique
+  descricao    String?
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
   usuarios Usuario[]
@@ -306,11 +342,11 @@ model Maquina {
   criadoEm                     DateTime    @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm                 DateTime    @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
-  fichas  FichaTecnica[]
-  rodadas Rodada[]
-  turnos  MaquinaTurno[]
+  fichas   FichaTecnica[]
+  rodadas  Rodada[]
+  turnos   MaquinaTurno[]
   divisoes DivisaoOp[]
-  eventos Evento[]
+  eventos  Evento[]
 
   @@map("maquina")
 }
@@ -354,21 +390,25 @@ model CavidadeMolde {
 }
 
 model Produto {
-  id        String      @id @default(uuid()) @db.Uuid
-  codigo    String      @unique
-  descricao String
-  tipo      TipoProduto
-  unidade   Unidade
-  cor       String?
-  ativo     Boolean     @default(true)
-  criadoEm  DateTime    @default(now()) @map("criado_em") @db.Timestamptz(3)
-  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  id           String      @id @default(uuid()) @db.Uuid
+  codigo       String      @unique
+  descricao    String
+  tipo         TipoProduto
+  unidade      Unidade
+  cor          String?
+  ativo        Boolean     @default(true)
+  criadoEm     DateTime    @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime    @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
   cavidades   CavidadeMolde[]
   conjuntos   ConjuntoPadrao[]
   fichas      FichaTecnica[]
   componentes ComponenteFicha[]
   ordens      OrdemProducao[]
+
+  etiquetas  Etiqueta[]
+  lotes      LoteMaterial[]
+  movimentos MovimentoEstoque[]
 
   @@map("produto")
 }
@@ -468,12 +508,17 @@ model TipoPerda {
 }
 
 model LocalEstoque {
-  id        String           @id @default(uuid()) @db.Uuid
-  nome      String           @unique
-  tipo      TipoLocalEstoque
-  ativo     Boolean          @default(true)
-  criadoEm  DateTime         @default(now()) @map("criado_em") @db.Timestamptz(3)
-  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  id           String           @id @default(uuid()) @db.Uuid
+  nome         String           @unique
+  tipo         TipoLocalEstoque
+  ativo        Boolean          @default(true)
+  criadoEm     DateTime         @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime         @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  movimentosOrigem  MovimentoEstoque[] @relation("MovimentoOrigem")
+  movimentosDestino MovimentoEstoque[] @relation("MovimentoDestino")
+  recebimentos      Recebimento[]
+  etiquetas         Etiqueta[]
 
   @@map("local_estoque")
 }
@@ -489,6 +534,8 @@ model Impressora {
   atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
   layouts LayoutEtiqueta[]
+
+  impressoes ImpressaoEtiqueta[]
 
   @@map("impressora")
 }
@@ -507,18 +554,23 @@ model LayoutEtiqueta {
 
   impressoraPadrao Impressora? @relation(fields: [impressoraPadraoId], references: [id])
 
+  impressoes ImpressaoEtiqueta[]
+
   @@map("layout_etiqueta")
 }
 
 /// Posto/dispositivo (tablet). O prefixo de 2 caracteres compõe o código das etiquetas (seção 8).
 model Dispositivo {
-  id        String   @id @default(uuid()) @db.Uuid
-  nome      String   @unique
-  prefixo   String   @unique
-  descricao String?
-  ativo     Boolean  @default(true)
-  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  id           String   @id @default(uuid()) @db.Uuid
+  nome         String   @unique
+  prefixo      String   @unique
+  descricao    String?
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
   atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  sequencia SequenciaDispositivo?
+  etiquetas Etiqueta[]
 
   @@map("dispositivo")
 }
@@ -548,6 +600,8 @@ model OrdemProducao {
   criadoPor Usuario     @relation(fields: [criadoPorId], references: [id])
   rodadaOps RodadaOp[]
   divisoes  DivisaoOp[]
+
+  lotes LoteMaterial[]
 
   @@map("ordem_producao")
 }
@@ -614,18 +668,19 @@ model TurnoApontamento {
   divisoes     DivisaoOp[]
   eventos      Evento[]
   aprovacoes   Aprovacao[]
+  etiquetas    Etiqueta[]
 
   @@index([apontadorId, situacao])
   @@map("turno_apontamento")
 }
 
 model MaquinaTurno {
-  id        String  @id @default(uuid()) @db.Uuid
-  turnoId   String  @map("turno_id") @db.Uuid
-  maquinaId String  @map("maquina_id") @db.Uuid
-  rodadaId  String  @map("rodada_id") @db.Uuid
+  id                   String  @id @default(uuid()) @db.Uuid
+  turnoId              String  @map("turno_id") @db.Uuid
+  maquinaId            String  @map("maquina_id") @db.Uuid
+  rodadaId             String  @map("rodada_id") @db.Uuid
   /// Definido no fechamento: a máquina segue rodando para o próximo turno.
-  segueRodando Boolean @default(false) @map("segue_rodando")
+  segueRodando         Boolean @default(false) @map("segue_rodando")
   /// Motivo da parada que estava aberta no fechamento (oferecida ao próximo turno).
   paradaAbertaMotivoId String? @map("parada_aberta_motivo_id") @db.Uuid
 
@@ -651,11 +706,13 @@ model DivisaoOp {
   meta             Float
   criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
 
-  ordem    OrdemProducao    @relation(fields: [ordemId], references: [id])
-  rodadaOp RodadaOp         @relation(fields: [rodadaOpId], references: [id])
-  turno    TurnoApontamento @relation(fields: [turnoId], references: [id])
-  maquina  Maquina          @relation(fields: [maquinaId], references: [id])
-  eventos  Evento[]
+  ordem     OrdemProducao    @relation(fields: [ordemId], references: [id])
+  rodadaOp  RodadaOp         @relation(fields: [rodadaOpId], references: [id])
+  turno     TurnoApontamento @relation(fields: [turnoId], references: [id])
+  maquina   Maquina          @relation(fields: [maquinaId], references: [id])
+  eventos   Evento[]
+  etiquetas Etiqueta[]
+  lotes     LoteMaterial[]
 
   @@unique([ordemId, sequencial])
   @@unique([turnoId, rodadaOpId])
@@ -665,32 +722,34 @@ model DivisaoOp {
 /// Lançamento imutável do apontador. Totais e indicadores são calculados a partir dos eventos.
 model Evento {
   /// Identificador único gerado no dispositivo (evita duplicidade no reenvio).
-  id             String         @id @db.Uuid
-  tipo           TipoEvento
-  turnoId        String         @map("turno_id") @db.Uuid
-  maquinaId      String         @map("maquina_id") @db.Uuid
-  rodadaId       String?        @map("rodada_id") @db.Uuid
-  divisaoId      String?        @map("divisao_id") @db.Uuid
-  horaOcorrencia DateTime       @map("hora_ocorrencia") @db.Timestamptz(3)
-  horaRegistro   DateTime       @map("hora_registro") @db.Timestamptz(3)
-  recebidoEm     DateTime       @default(now()) @map("recebido_em") @db.Timestamptz(3)
-  usuarioId      String         @map("usuario_id") @db.Uuid
-  dispositivo    String
-  dados          Json           @default("{}")
+  id              String         @id @db.Uuid
+  tipo            TipoEvento
+  turnoId         String         @map("turno_id") @db.Uuid
+  maquinaId       String         @map("maquina_id") @db.Uuid
+  rodadaId        String?        @map("rodada_id") @db.Uuid
+  divisaoId       String?        @map("divisao_id") @db.Uuid
+  horaOcorrencia  DateTime       @map("hora_ocorrencia") @db.Timestamptz(3)
+  horaRegistro    DateTime       @map("hora_registro") @db.Timestamptz(3)
+  recebidoEm      DateTime       @default(now()) @map("recebido_em") @db.Timestamptz(3)
+  usuarioId       String         @map("usuario_id") @db.Uuid
+  dispositivo     String
+  dados           Json           @default("{}")
   /// Quantidade principal do evento (peças ou kg), para somas rápidas.
-  quantidade     Float?
-  marcaHorario   MarcaHorario   @default(NO_MOMENTO) @map("marca_horario")
-  pesoNaoConforme Boolean       @default(false) @map("peso_nao_conforme")
-  situacao       SituacaoEvento @default(VALIDO)
-  corrigeEventoId String?       @map("corrige_evento_id") @db.Uuid
-  justificativa  String?
+  quantidade      Float?
+  marcaHorario    MarcaHorario   @default(NO_MOMENTO) @map("marca_horario")
+  pesoNaoConforme Boolean        @default(false) @map("peso_nao_conforme")
+  situacao        SituacaoEvento @default(VALIDO)
+  corrigeEventoId String?        @map("corrige_evento_id") @db.Uuid
+  justificativa   String?
 
-  turno   TurnoApontamento @relation(fields: [turnoId], references: [id])
-  maquina Maquina          @relation(fields: [maquinaId], references: [id])
-  rodada  Rodada?          @relation(fields: [rodadaId], references: [id])
-  divisao DivisaoOp?       @relation(fields: [divisaoId], references: [id])
-  usuario Usuario          @relation(fields: [usuarioId], references: [id])
+  turno      TurnoApontamento   @relation(fields: [turnoId], references: [id])
+  maquina    Maquina            @relation(fields: [maquinaId], references: [id])
+  rodada     Rodada?            @relation(fields: [rodadaId], references: [id])
+  divisao    DivisaoOp?         @relation(fields: [divisaoId], references: [id])
+  usuario    Usuario            @relation(fields: [usuarioId], references: [id])
   aprovacoes Aprovacao[]
+  etiquetas  Etiqueta[]
+  movimentos MovimentoEstoque[]
 
   @@index([turnoId, maquinaId, horaOcorrencia])
   @@index([rodadaId, tipo])
@@ -749,4 +808,183 @@ model MapeamentoColuna {
 
   @@unique([layout, campo])
   @@map("mapeamento_coluna")
+}
+
+// ---------------- Etiquetas, matéria-prima e estoque (Fase 3) ----------------
+
+/// Último número de etiqueta emitido por posto (o prefixo vem do cadastro do dispositivo).
+model SequenciaDispositivo {
+  dispositivoId String @id @map("dispositivo_id") @db.Uuid
+  ultimo        Int    @default(0)
+
+  dispositivo Dispositivo @relation(fields: [dispositivoId], references: [id])
+
+  @@map("sequencia_dispositivo")
+}
+
+/// Etiqueta com código único (nunca reutilizado). Código de barras GS1-128.
+model Etiqueta {
+  id                 String           @id @default(uuid()) @db.Uuid
+  codigo             String           @unique
+  sequencia          Int
+  dispositivoId      String           @map("dispositivo_id") @db.Uuid
+  tipo               TipoEtiqueta
+  produtoId          String           @map("produto_id") @db.Uuid
+  quantidade         Float
+  unidade            Unidade
+  pesoKg             Float?           @map("peso_kg")
+  loteId             String?          @map("lote_id") @db.Uuid
+  eventoId           String?          @map("evento_id") @db.Uuid
+  divisaoId          String?          @map("divisao_id") @db.Uuid
+  turnoId            String?          @map("turno_id") @db.Uuid
+  responsavelId      String           @map("responsavel_id") @db.Uuid
+  emitidaEm          DateTime         @default(now()) @map("emitida_em") @db.Timestamptz(3)
+  avulso             Boolean          @default(false)
+  numeroNoLancamento Int?             @map("numero_no_lancamento")
+  totalNoLancamento  Int?             @map("total_no_lancamento")
+  situacao           SituacaoEtiqueta @default(EMITIDA)
+  impressaoPendente  Boolean          @default(true) @map("impressao_pendente")
+  reimpressoes       Int              @default(0)
+  /// Local atual (produto recebido no estoque).
+  localEstoqueId     String?          @map("local_estoque_id") @db.Uuid
+  /// Campos impressos (origem, destino, operador, composição...).
+  dados              Json             @default("{}")
+
+  dispositivo  Dispositivo         @relation(fields: [dispositivoId], references: [id])
+  produto      Produto             @relation(fields: [produtoId], references: [id])
+  lote         LoteMaterial?       @relation(fields: [loteId], references: [id])
+  evento       Evento?             @relation(fields: [eventoId], references: [id])
+  divisao      DivisaoOp?          @relation(fields: [divisaoId], references: [id])
+  turno        TurnoApontamento?   @relation(fields: [turnoId], references: [id])
+  responsavel  Usuario             @relation(fields: [responsavelId], references: [id])
+  localEstoque LocalEstoque?       @relation(fields: [localEstoqueId], references: [id])
+  impressoes   ImpressaoEtiqueta[]
+  recebimento  Recebimento?
+  movimentos   MovimentoEstoque[]
+
+  @@unique([dispositivoId, sequencia])
+  @@index([tipo, situacao])
+  @@map("etiqueta")
+}
+
+/// Cada envio à impressora (inclusive reimpressões e testes de layout).
+model ImpressaoEtiqueta {
+  id           String    @id @default(uuid()) @db.Uuid
+  etiquetaId   String?   @map("etiqueta_id") @db.Uuid
+  layoutId     String?   @map("layout_id") @db.Uuid
+  impressoraId String?   @map("impressora_id") @db.Uuid
+  usuarioId    String    @map("usuario_id") @db.Uuid
+  segundaVia   Boolean   @default(false) @map("segunda_via")
+  teste        Boolean   @default(false)
+  sucesso      Boolean?
+  mensagem     String?
+  criadoEm     DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  concluidoEm  DateTime? @map("concluido_em") @db.Timestamptz(3)
+
+  etiqueta   Etiqueta?       @relation(fields: [etiquetaId], references: [id])
+  layout     LayoutEtiqueta? @relation(fields: [layoutId], references: [id])
+  impressora Impressora?     @relation(fields: [impressoraId], references: [id])
+  usuario    Usuario         @relation(fields: [usuarioId], references: [id])
+
+  @@map("impressao_etiqueta")
+}
+
+/// Lote de material. O saldo é a soma dos movimentos.
+model LoteMaterial {
+  id                String     @id @default(uuid()) @db.Uuid
+  numero            String     @unique
+  materialId        String     @map("material_id") @db.Uuid
+  origem            OrigemLote
+  fornecedor        String?
+  notaFiscal        String?    @map("nota_fiscal")
+  loteFornecedor    String?    @map("lote_fornecedor")
+  quantidadeInicial Float      @map("quantidade_inicial")
+  indiceFluidez     Float?     @map("indice_fluidez")
+  cor               String?
+  ordemExtrusaoId   String?    @map("ordem_extrusao_id") @db.Uuid
+  divisaoId         String?    @map("divisao_id") @db.Uuid
+  observacao        String?
+  criadoPorId       String     @map("criado_por_id") @db.Uuid
+  criadoEm          DateTime   @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  material      Produto             @relation(fields: [materialId], references: [id])
+  ordemExtrusao OrdemProducao?      @relation(fields: [ordemExtrusaoId], references: [id])
+  divisao       DivisaoOp?          @relation(fields: [divisaoId], references: [id])
+  criadoPor     Usuario             @relation(fields: [criadoPorId], references: [id])
+  etiquetas     Etiqueta[]
+  movimentos    MovimentoEstoque[]
+  mistura       Mistura?            @relation("MisturaGerada")
+  componenteEm  ComponenteMistura[]
+
+  @@map("lote_material")
+}
+
+model Mistura {
+  id              String   @id @default(uuid()) @db.Uuid
+  loteId          String   @unique @map("lote_id") @db.Uuid
+  produtosDestino String[] @map("produtos_destino")
+  responsavelId   String   @map("responsavel_id") @db.Uuid
+  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  lote        LoteMaterial        @relation("MisturaGerada", fields: [loteId], references: [id])
+  responsavel Usuario             @relation(fields: [responsavelId], references: [id])
+  componentes ComponenteMistura[]
+
+  @@map("mistura")
+}
+
+model ComponenteMistura {
+  id           String @id @default(uuid()) @db.Uuid
+  misturaId    String @map("mistura_id") @db.Uuid
+  loteId       String @map("lote_id") @db.Uuid
+  quantidadeKg Float  @map("quantidade_kg")
+  percentual   Float
+
+  mistura Mistura      @relation(fields: [misturaId], references: [id], onDelete: Cascade)
+  lote    LoteMaterial @relation(fields: [loteId], references: [id])
+
+  @@map("componente_mistura")
+}
+
+/// Movimento de estoque. Saldo de um local = entradas (destino) − saídas (origem).
+model MovimentoEstoque {
+  id             String        @id @default(uuid()) @db.Uuid
+  tipo           TipoMovimento
+  produtoId      String        @map("produto_id") @db.Uuid
+  loteId         String?       @map("lote_id") @db.Uuid
+  etiquetaId     String?       @map("etiqueta_id") @db.Uuid
+  localOrigemId  String?       @map("local_origem_id") @db.Uuid
+  localDestinoId String?       @map("local_destino_id") @db.Uuid
+  quantidade     Float
+  eventoId       String?       @map("evento_id") @db.Uuid
+  usuarioId      String        @map("usuario_id") @db.Uuid
+  criadoEm       DateTime      @default(now()) @map("criado_em") @db.Timestamptz(3)
+  observacao     String?
+
+  produto      Produto       @relation(fields: [produtoId], references: [id])
+  lote         LoteMaterial? @relation(fields: [loteId], references: [id])
+  etiqueta     Etiqueta?     @relation(fields: [etiquetaId], references: [id])
+  localOrigem  LocalEstoque? @relation("MovimentoOrigem", fields: [localOrigemId], references: [id])
+  localDestino LocalEstoque? @relation("MovimentoDestino", fields: [localDestinoId], references: [id])
+  evento       Evento?       @relation(fields: [eventoId], references: [id])
+  usuario      Usuario       @relation(fields: [usuarioId], references: [id])
+
+  @@index([loteId])
+  @@index([produtoId])
+  @@map("movimento_estoque")
+}
+
+/// Recebimento de etiqueta no estoque (produto acabado/semiacabado) ou no setor de matéria-prima.
+model Recebimento {
+  id             String   @id @default(uuid()) @db.Uuid
+  etiquetaId     String   @unique @map("etiqueta_id") @db.Uuid
+  localEstoqueId String   @map("local_estoque_id") @db.Uuid
+  recebidoPorId  String   @map("recebido_por_id") @db.Uuid
+  recebidoEm     DateTime @default(now()) @map("recebido_em") @db.Timestamptz(3)
+
+  etiqueta     Etiqueta     @relation(fields: [etiquetaId], references: [id])
+  localEstoque LocalEstoque @relation(fields: [localEstoqueId], references: [id])
+  recebidoPor  Usuario      @relation(fields: [recebidoPorId], references: [id])
+
+  @@map("recebimento")
 }

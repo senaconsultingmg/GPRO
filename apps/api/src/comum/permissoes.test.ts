@@ -72,7 +72,15 @@ describe('Permissões por perfil (seção 5)', () => {
         permitidos: ['SUPERUSUARIO'],
       },
       { metodo: 'post', rota: '/api/ordens', permitidos: ['PCP'], corpo: {} },
-      { metodo: 'post', rota: '/api/rodadas', permitidos: ['PCP'], corpo: {} },
+      { metodo: 'post', rota: '/api/rodadas', permitidos: ['PCP', 'MATERIA_PRIMA'], corpo: {} },
+      { metodo: 'post', rota: '/api/ordens/extrusao', permitidos: ['PCP', 'MATERIA_PRIMA'], corpo: {} },
+      { metodo: 'post', rota: '/api/estoque/receber', permitidos: ['ESTOQUE'], corpo: {} },
+      { metodo: 'post', rota: '/api/materia-prima/misturas', permitidos: ['MATERIA_PRIMA'], corpo: {} },
+      {
+        metodo: 'get',
+        rota: '/api/estoque/saldos',
+        permitidos: ['ESTOQUE', 'PCP', 'SUPERUSUARIO', 'MATERIA_PRIMA'],
+      },
       { metodo: 'post', rota: '/api/turnos', permitidos: ['APONTADOR'], corpo: {} },
       { metodo: 'get', rota: '/api/importacoes', permitidos: ['PCP', 'SUPERUSUARIO'] },
       {

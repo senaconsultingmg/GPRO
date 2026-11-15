@@ -223,3 +223,51 @@ export const ROTULO_TIPO_VOLUME: Record<TipoVolumeExtrusao, string> = {
 
 export const LAYOUTS_IMPORTACAO = ['IMPORTACAO_ORDENS', 'IMPORTACAO_PRODUTOS'] as const;
 export type LayoutImportacao = (typeof LAYOUTS_IMPORTACAO)[number];
+
+// ---------------- Fase 3: etiquetas, lotes e estoque ----------------
+
+export const SITUACOES_ETIQUETA = ['EMITIDA', 'RECEBIDA', 'CONSUMIDA', 'EXPORTADA', 'CANCELADA'] as const;
+export type SituacaoEtiqueta = (typeof SITUACOES_ETIQUETA)[number];
+export const ROTULO_SITUACAO_ETIQUETA: Record<SituacaoEtiqueta, string> = {
+  EMITIDA: 'Emitida',
+  RECEBIDA: 'Recebida',
+  CONSUMIDA: 'Consumida',
+  EXPORTADA: 'Exportada',
+  CANCELADA: 'Cancelada',
+};
+
+export const ORIGENS_LOTE = ['COMPRA', 'EXTRUSAO', 'MISTURA', 'MOIDO', 'RECICLADO'] as const;
+export type OrigemLote = (typeof ORIGENS_LOTE)[number];
+export const ROTULO_ORIGEM_LOTE: Record<OrigemLote, string> = {
+  COMPRA: 'Compra',
+  EXTRUSAO: 'Extrusão',
+  MISTURA: 'Mistura',
+  MOIDO: 'Moído',
+  RECICLADO: 'Reciclado',
+};
+
+export const TIPOS_MOVIMENTO = [
+  'ENTRADA_COMPRA',
+  'ENTRADA_RETORNO',
+  'ENTRADA_EXTRUSAO',
+  'ENTRADA_MISTURA',
+  'SAIDA_MISTURA',
+  'CONSUMO_PRODUCAO',
+  'DEVOLUCAO_PRODUCAO',
+  'TRANSFERENCIA_LOCAL',
+  'RECEBIMENTO_PRODUTO',
+  'CONSUMO_SEMIACABADO',
+] as const;
+export type TipoMovimento = (typeof TIPOS_MOVIMENTO)[number];
+export const ROTULO_TIPO_MOVIMENTO: Record<TipoMovimento, string> = {
+  ENTRADA_COMPRA: 'Entrada por compra',
+  ENTRADA_RETORNO: 'Entrada de moído/reciclado',
+  ENTRADA_EXTRUSAO: 'Entrada de extrusado',
+  ENTRADA_MISTURA: 'Entrada de mistura',
+  SAIDA_MISTURA: 'Saída para mistura',
+  CONSUMO_PRODUCAO: 'Consumo na produção',
+  DEVOLUCAO_PRODUCAO: 'Devolução da produção',
+  TRANSFERENCIA_LOCAL: 'Transferência entre locais',
+  RECEBIMENTO_PRODUTO: 'Recebimento de produto',
+  CONSUMO_SEMIACABADO: 'Consumo de semiacabado',
+};

@@ -6,6 +6,10 @@
 import * as argon2 from 'argon2';
 import {
   calcularPhPadrao,
+  codigoEtiqueta,
+  modeloZplPadrao,
+  TIPOS_ETIQUETA,
+  type TipoEtiqueta,
   gerarEscalaCentral,
   gerarEscalaRevezamento,
   PARAMETROS_INICIAIS,
@@ -305,6 +309,13 @@ export async function carregarDadosExemplo(
       tipo: 'EXTRUSADO' as const,
       unidade: 'KG' as const,
       cor: 'Preta',
+    },
+    {
+      codigo: 'MIS-PP-AZ',
+      descricao: 'Mistura PP + masterbatch azul',
+      tipo: 'MISTURA' as const,
+      unidade: 'KG' as const,
+      cor: 'Azul',
     },
   ];
   for (const p of dadosProdutos) {
@@ -696,6 +707,154 @@ export async function carregarDadosExemplo(
         },
       });
     }
+  }
+
+  // ---------- Layouts de etiqueta (Fase 3): 100×150 e 100×50 por tipo ----------
+  if ((await prisma.layoutEtiqueta.count()) === 0) {
+    const zInjecao = await prisma.impressora.findUniqueOrThrow({ where: { nome: 'Zebra Injeção' } });
+    const zMp = await prisma.impressora.findUniqueOrThrow({ where: { nome: 'Zebra Matéria-prima' } });
+    const nomes: Record<TipoEtiqueta, string> = {
+      PRODUTO: 'Produto',
+      EXTRUSAO: 'Extrusão',
+      MISTURA: 'Mistura',
+      ENTRADA_MATERIA_PRIMA: 'Entrada de MP',
+      PERDA: 'Perda',
+      DEVOLUCAO_TRANSFERENCIA: 'Devolução e transferência',
+    };
+    for (const tipo of TIPOS_ETIQUETA) {
+      for (const [tamanho, alturaMm] of [
+        ['100x150', 150],
+        ['100x50', 50],
+      ] as const) {
+        await prisma.layoutEtiqueta.create({
+          data: {
+            nome: `${nomes[tipo]} ${tamanho}`,
+            tipoEtiqueta: tipo,
+            larguraMm: 100,
+            alturaMm,
+            modeloZpl: modeloZplPadrao(tipo, tamanho),
+            impressoraPadraoId: ['PRODUTO', 'PERDA', 'DEVOLUCAO_TRANSFERENCIA'].includes(tipo)
+              ? zInjecao.id
+              : zMp.id,
+          },
+        });
+      }
+    }
+  }
+
+  // ---------- Lotes de matéria-prima (Fase 3), com etiqueta do posto MP ----------
+  if ((await prisma.loteMaterial.count()) === 0) {
+    const almox = await prisma.localEstoque.findUniqueOrThrow({
+      where: { nome: 'Almoxarifado de matéria-prima' },
+    });
+    const postoMp = await prisma.dispositivo.findUniqueOrThrow({ where: { prefixo: 'MP' } });
+    const dia = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: '2-digit',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .format(new Date())
+      .replace(/-/g, '');
+    const lotes = [
+      {
+        material: 'PP-H103',
+        kg: 2000,
+        origem: 'COMPRA' as const,
+        fornecedor: 'Petroquímica Sul',
+        nf: '102345',
+        fluidez: 3.5,
+      },
+      {
+        material: 'PEAD-5502',
+        kg: 1000,
+        origem: 'COMPRA' as const,
+        fornecedor: 'Petroquímica Sul',
+        nf: '102346',
+        fluidez: 0.35,
+      },
+      {
+        material: 'MB-BR01',
+        kg: 50,
+        origem: 'COMPRA' as const,
+        fornecedor: 'Cores Master',
+        nf: '55410',
+        fluidez: null,
+      },
+      {
+        material: 'MB-AZ01',
+        kg: 50,
+        origem: 'COMPRA' as const,
+        fornecedor: 'Cores Master',
+        nf: '55411',
+        fluidez: null,
+      },
+      {
+        material: 'MB-PR01',
+        kg: 50,
+        origem: 'COMPRA' as const,
+        fornecedor: 'Cores Master',
+        nf: '55412',
+        fluidez: null,
+      },
+      { material: 'MOI-PP', kg: 600, origem: 'MOIDO' as const, fornecedor: null, nf: null, fluidez: null },
+      {
+        material: 'EXT-PP-REC',
+        kg: 400,
+        origem: 'EXTRUSAO' as const,
+        fornecedor: null,
+        nf: null,
+        fluidez: 8,
+      },
+    ];
+    let seq =
+      (await prisma.sequenciaDispositivo.findUnique({ where: { dispositivoId: postoMp.id } }))?.ultimo ?? 0;
+    for (let i = 0; i < lotes.length; i++) {
+      const l = lotes[i];
+      const lote = await prisma.loteMaterial.create({
+        data: {
+          numero: `L${dia}-${String(i + 1).padStart(3, '0')}`,
+          materialId: produtos[l.material],
+          origem: l.origem,
+          fornecedor: l.fornecedor,
+          notaFiscal: l.nf,
+          quantidadeInicial: l.kg,
+          indiceFluidez: l.fluidez,
+          criadoPorId: usuarios.mp,
+        },
+      });
+      await prisma.movimentoEstoque.create({
+        data: {
+          tipo: l.origem === 'COMPRA' ? 'ENTRADA_COMPRA' : 'ENTRADA_RETORNO',
+          produtoId: lote.materialId,
+          loteId: lote.id,
+          localDestinoId: almox.id,
+          quantidade: l.kg,
+          usuarioId: usuarios.mp,
+        },
+      });
+      seq++;
+      await prisma.etiqueta.create({
+        data: {
+          codigo: codigoEtiqueta('MP', seq),
+          sequencia: seq,
+          dispositivoId: postoMp.id,
+          tipo: 'ENTRADA_MATERIA_PRIMA',
+          produtoId: lote.materialId,
+          quantidade: l.kg,
+          unidade: 'KG',
+          pesoKg: l.kg,
+          loteId: lote.id,
+          responsavelId: usuarios.mp,
+          impressaoPendente: false,
+        },
+      });
+    }
+    await prisma.sequenciaDispositivo.upsert({
+      where: { dispositivoId: postoMp.id },
+      create: { dispositivoId: postoMp.id, ultimo: seq },
+      update: { ultimo: seq },
+    });
   }
 
   // ---------- Escala (próximos 60 dias, sem sobrescrever) ----------

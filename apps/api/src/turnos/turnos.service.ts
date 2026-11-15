@@ -683,7 +683,13 @@ export class TurnosService {
 
   // ---------- Eventos ----------
 
-  async lancar(turnoId: string, entrada: EventoEntrada, usuario: UsuarioAutenticado, dispositivo: string) {
+  async lancar(
+    turnoId: string,
+    entrada: EventoEntrada,
+    usuario: UsuarioAutenticado,
+    dispositivo: string,
+    postoId: string | null = null,
+  ) {
     const turno = await this.carregarParaLancar(turnoId, usuario);
     if (entrada.tipo === 'INICIO_MAQUINA') {
       const mt = await this.prisma.maquinaTurno.findUnique({
@@ -692,7 +698,7 @@ export class TurnosService {
       if (!mt) throw new ErroNegocio('Use "Ligar máquina" para incluir a máquina no turno.');
     }
     return this.prisma.$transaction((tx) =>
-      this.eventos.registrar(tx, this.ctx(turno, usuario, dispositivo), entrada),
+      this.eventos.registrar(tx, { ...this.ctx(turno, usuario, dispositivo), postoId }, entrada),
     );
   }
 

@@ -13,5 +13,7 @@ await prisma.$executeRawUnsafe(
   `TRUNCATE ${tabelas.map((t) => `"${t.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`,
 );
 await carregarDadosExemplo(prisma);
+// Impressoras do teste apontam para a impressora simulada (porta 9101).
+await prisma.impressora.updateMany({ data: { enderecoIp: '127.0.0.1', porta: 9101 } });
 await prisma.$disconnect();
 console.log('Banco de e2e preparado.');

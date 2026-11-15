@@ -11,7 +11,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { esquemaOrdem, type OrdemEntrada } from '@apontamento/shared';
+import { esquemaOrdem, esquemaOrdemExtrusao, type OrdemEntrada } from '@apontamento/shared';
+import type { z } from 'zod';
 import { Permissao, UsuarioAtual, type UsuarioAutenticado } from '../comum/decoradores.js';
 import { ValidacaoZod } from '../comum/validacao-zod.pipe.js';
 import { OrdensService } from './ordens.service.js';
@@ -46,6 +47,15 @@ export class OrdensController {
     @UsuarioAtual() usuario: UsuarioAutenticado,
   ) {
     return this.servico.criar(dados, usuario);
+  }
+
+  @Post('extrusao')
+  @Permissao('ordens.extrusao')
+  criarExtrusao(
+    @Body(new ValidacaoZod(esquemaOrdemExtrusao)) dados: z.infer<typeof esquemaOrdemExtrusao>,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.servico.criarExtrusao(dados, usuario);
   }
 
   @Put(':id')

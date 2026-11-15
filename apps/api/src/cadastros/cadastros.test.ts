@@ -134,7 +134,7 @@ describe('Cadastros e auditoria', () => {
       rota: 'layouts-etiqueta',
       entidade: 'LayoutEtiqueta',
       criar: () => ({
-        nome: 'Produto 100x50',
+        nome: 'Produto 80x40 teste',
         tipoEtiqueta: 'PRODUTO',
         larguraMm: 100,
         alturaMm: 50,

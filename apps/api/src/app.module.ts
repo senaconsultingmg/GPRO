@@ -32,6 +32,12 @@ import { TurnosService } from './turnos/turnos.service.js';
 import { EventosService } from './turnos/eventos.service.js';
 import { RelatorioService } from './turnos/relatorio.service.js';
 import { TurnosController } from './turnos/turnos.controller.js';
+import { EtiquetasService } from './etiquetas/etiquetas.service.js';
+import { EtiquetasController } from './etiquetas/etiquetas.controller.js';
+import { MateriaPrimaService } from './materia-prima/materia-prima.service.js';
+import { MateriaPrimaController } from './materia-prima/materia-prima.controller.js';
+import { EstoqueService } from './estoque/estoque.service.js';
+import { EstoqueController } from './estoque/estoque.controller.js';
 
 @Module({
   imports: [
@@ -55,6 +61,9 @@ import { TurnosController } from './turnos/turnos.controller.js';
     ImportacaoController,
     RodadasController,
     TurnosController,
+    EtiquetasController,
+    MateriaPrimaController,
+    EstoqueController,
   ],
   providers: [
     PrismaService,
@@ -72,6 +81,9 @@ import { TurnosController } from './turnos/turnos.controller.js';
     TurnosService,
     EventosService,
     RelatorioService,
+    EtiquetasService,
+    MateriaPrimaService,
+    EstoqueService,
     { provide: APP_GUARD, useClass: GuardaAcesso },
     { provide: APP_FILTER, useClass: FiltroErros },
   ],

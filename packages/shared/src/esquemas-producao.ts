@@ -87,10 +87,10 @@ const baseEvento = {
   justificativa: textoOpcional(1000),
 };
 
+/** Fase 3: o material é identificado pela leitura da etiqueta do lote/mistura ou pelo número do lote. */
 const material = {
   divisaoId: id,
-  materialId: id,
-  lote: z.string().trim().min(1, 'Informe o lote.').max(60),
+  leitura: z.string().trim().min(1, 'Leia a etiqueta ou digite o número do lote.').max(200),
   quantidadeKg: kg('Quantidade'),
 };
 
@@ -114,6 +114,8 @@ export const esquemaEvento = z.discriminatedUnion('tipo', [
       .array(z.object({ tipoVolume: z.enum(TIPOS_VOLUME_EXTRUSAO), pesoKg: kg('Peso do volume') }))
       .default([]),
     operador: textoOpcional(80),
+    indiceFluidez: z.number().positive().nullish(),
+    produtosDestino: z.array(id).default([]),
   }),
   z
     .object({
@@ -133,9 +135,8 @@ export const esquemaEvento = z.discriminatedUnion('tipo', [
     ...baseEvento,
     tipo: z.literal('ENTRADA_SEMIACABADO'),
     divisaoId: id,
-    produtoId: id,
-    quantidade: kg('Quantidade'),
-    lote: textoOpcional(60),
+    /** Leitura da etiqueta do semiacabado (ou digitação do código). */
+    leitura: z.string().trim().min(1, 'Leia a etiqueta do semiacabado.').max(200),
   }),
   z.object({ ...baseEvento, tipo: z.literal('DEVOLUCAO_MATERIA_PRIMA'), ...material }),
   z.object({ ...baseEvento, tipo: z.literal('TRANSFERENCIA'), ...material, divisaoDestinoId: id }),
@@ -159,4 +160,66 @@ export type FecharTurno = z.infer<typeof esquemaFecharTurno>;
 // ---------- Mapeamento de colunas do Excel ----------
 export const esquemaMapeamento = z.object({
   colunas: z.record(z.string(), z.string().trim().min(1, 'Informe o nome da coluna.').max(80)),
+});
+
+// ---------- Fase 3: matéria-prima, estoque e impressão ----------
+const leitura = z.string().trim().min(1, 'Leia a etiqueta ou digite o código.').max(200);
+
+export const esquemaLoteCompra = z.object({
+  materialId: id,
+  fornecedor: z.string().trim().min(1, 'Informe o fornecedor.').max(120),
+  notaFiscal: z.string().trim().min(1, 'Informe a nota fiscal.').max(40),
+  loteFornecedor: textoOpcional(60),
+  quantidadeKg: kg('Quantidade'),
+  localEstoqueId: id,
+  indiceFluidez: z
+    .number()
+    .positive()
+    .nullish()
+    .transform((v) => v ?? null),
+  cor: textoOpcional(40),
+  observacao: textoOpcional(500),
+});
+export type LoteCompra = z.infer<typeof esquemaLoteCompra>;
+
+export const esquemaLoteRetorno = z.object({
+  materialId: id,
+  origem: z.enum(['MOIDO', 'RECICLADO']),
+  quantidadeKg: kg('Quantidade'),
+  localEstoqueId: id,
+  /** Etiqueta da perda que originou o material (opcional, para rastreio). */
+  leituraPerda: textoOpcional(200),
+  observacao: textoOpcional(500),
+});
+export type LoteRetorno = z.infer<typeof esquemaLoteRetorno>;
+
+export const esquemaMistura = z.object({
+  materialId: id,
+  componentes: z
+    .array(z.object({ loteId: id, localEstoqueId: id, quantidadeKg: kg('Quantidade do componente') }))
+    .min(2, 'Uma mistura tem ao menos dois componentes.'),
+  produtosDestino: z.array(id).default([]),
+  localEstoqueId: id,
+  observacao: textoOpcional(500),
+});
+export type MisturaEntrada = z.infer<typeof esquemaMistura>;
+
+export const esquemaTransferirLote = z
+  .object({ localOrigemId: id, localDestinoId: id, quantidadeKg: kg('Quantidade') })
+  .refine((t) => t.localOrigemId !== t.localDestinoId, {
+    message: 'Origem e destino devem ser diferentes.',
+    path: ['localDestinoId'],
+  });
+
+export const esquemaLeituraLocal = z.object({ leitura, localEstoqueId: id });
+
+export const esquemaSolicitarImpressao = z.object({ layoutId: idOpcional, impressoraId: idOpcional });
+export const esquemaResultadoImpressao = z.object({ sucesso: z.boolean(), mensagem: textoOpcional(500) });
+
+export const esquemaOrdemExtrusao = z.object({
+  produtoId: id,
+  quantidade: kg('Quantidade'),
+  dataInicioPrevista: dataCivil.nullish().transform((v) => v ?? null),
+  dataFimPrevista: dataCivil.nullish().transform((v) => v ?? null),
+  observacao: textoOpcional(1000),
 });

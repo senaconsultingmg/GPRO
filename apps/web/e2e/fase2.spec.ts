@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { configurarPosto } from './auxiliar';
 
 async function entrar(page: Page, login: string, senha = 'Senha@123') {
   await page.goto('/');
@@ -38,6 +39,7 @@ test.describe.serial('Fase 2 — turno completo no tablet com rodada de 3 OPs', 
     page,
   }) => {
     await entrar(page, 'apontador@exemplo.com.br');
+    await configurarPosto(page, 'T1');
     await page.getByRole('link', { name: 'Apontamento', exact: true }).click();
 
     // Abertura com sugestão da escala.
@@ -129,13 +131,14 @@ test.describe.serial('Fase 2 — turno completo no tablet com rodada de 3 OPs', 
     const botao = lancamento.getByRole('button', { name: antecipar ? '+10 min' : '-10 min' });
     await botao.click();
     await botao.click();
-    await lancamento.getByRole('combobox', { name: 'Material' }).click();
+    await lancamento.getByRole('combobox', { name: 'ou escolha o lote' }).click();
     await page.getByRole('option', { name: /PP-H103/ }).click();
-    await lancamento.getByLabel('Lote').fill('L-777');
     await lancamento.getByLabel('Quantidade').fill('25');
     await confirmar();
     await expect(
-      page.getByRole('row', { name: new RegExp(`L-777.*${antecipar ? 'Antecipado' : 'Retroativo'}`) }),
+      page.getByRole('row', {
+        name: new RegExp(`PP-H103 lote L\\d{6}-\\d{3}: 25 kg.*${antecipar ? 'Antecipado' : 'Retroativo'}`),
+      }),
     ).toBeVisible();
 
     // Fechamento: máquina segue rodando e saldo solto de 12 peças.
@@ -160,6 +163,7 @@ test.describe.serial('Fase 2 — turno completo no tablet com rodada de 3 OPs', 
 
   test('no turno seguinte o saldo solto é oferecido para confirmação', async ({ page }) => {
     await entrar(page, 'apontador2@exemplo.com.br');
+    await configurarPosto(page, 'T2');
     await page.getByRole('link', { name: 'Apontamento', exact: true }).click();
     await page.getByRole('button', { name: 'Abrir turno' }).click();
     await page.getByRole('button', { name: 'Ligar máquina' }).first().click();

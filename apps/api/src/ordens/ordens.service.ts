@@ -145,6 +145,20 @@ export class OrdensService {
     return this.obter(id);
   }
 
+  /** Ordem de extrusão (RN-10): criada pelo PCP ou pelo setor de matéria-prima, sem número do ERP (P10). */
+  criarExtrusao(
+    dados: {
+      produtoId: string;
+      quantidade: number;
+      dataInicioPrevista: string | null;
+      dataFimPrevista: string | null;
+      observacao: string | null;
+    },
+    usuario: UsuarioAutenticado,
+  ) {
+    return this.criar({ ...dados, tipo: 'EXTRUSAO', numeroErp: null }, usuario);
+  }
+
   /** Só altera OP aberta e sem apontamentos. */
   async atualizar(id: string, dados: OrdemEntrada, usuario: UsuarioAutenticado) {
     const anterior = await this.prisma.ordemProducao.findUnique({ where: { id } });

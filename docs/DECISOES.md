@@ -139,3 +139,47 @@ Registro das decisões de projeto. "Confirmada" indica decisão respondida pelo 
 - O identificador de cada evento é gerado no dispositivo; reenviar o mesmo identificador devolve o registro existente ("duplicado").
 - Produção esperada: horas produzindo × PH da ficha congelada na rodada × (cavidades ativas ÷ cavidades da OP) em cada trecho.
 - Consumo teórico: g/peça × produção total (boas + refugadas); percentual sobre o peso produzido.
+
+## Fase 3 — Etiquetas, matéria-prima e estoque (15/11/2026)
+
+### Respostas do usuário às dúvidas do plano (todas confirmadas)
+
+| #   | Dúvida                                  | Decisão                                                                                                                                                                                                                                                                                                                  |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Conteúdo do código de barras            | **GS1-128** (sem QR Code), sem depender de prefixo GS1: (21) nº de série = código da etiqueta; (240) código do produto; (37) quantidade em peças **ou** (310n) peso líquido em kg; (11) data de produção; (10) lote. O texto legível com os AIs entre parênteses sai abaixo das barras; o código da etiqueta sai grande. |
+| 2   | Sequência por posto                     | Cada tablet/PC é vinculado a um dispositivo do cadastro na tela "Configurar este posto"; o servidor mantém o contador por dispositivo (cabeçalho `x-posto`). Na Fase 7 o dispositivo passará a reservar blocos de números.                                                                                               |
+| 3   | Quem imprime                            | O navegador envia o ZPL ao agente de impressão da rede local. O agente aceita HTTPS opcional (`AGENTE_TLS_CERT`/`AGENTE_TLS_KEY`), necessário quando a aplicação está na nuvem com HTTPS.                                                                                                                                |
+| 4   | Número do lote                          | Interno e automático para todo lote: `L` + AAMMDD + `-` + sequência do dia (ex.: L261115-003). O lote do fornecedor fica em campo próprio.                                                                                                                                                                               |
+| 5   | Extrusão                                | O setor de matéria-prima cria OP de extrusão (sem número do ERP) e rodada de extrusora. Cada volume gera etiqueta; os volumes da mesma divisão formam um lote de extrusado; o saldo entra quando o setor lê a etiqueta e escolhe o local.                                                                                |
+| 6   | Devolução e transferência               | Devolução gera etiqueta e só volta ao saldo do lote quando o setor de matéria-prima lê a etiqueta. Transferência entre máquinas gera etiqueta e não passa pelo estoque (sai do consumo da OP de origem e entra na de destino).                                                                                           |
+| 7   | Entrada na produção                     | O apontador lê a etiqueta do lote/mistura (ou digita o número do lote) e informa os kg; o estoque é baixado dos locais do lote (maior saldo primeiro); saldo insuficiente é recusado. Semiacabado: lê a etiqueta; ela fica **CONSUMIDA** (situação nova) e, se estava recebida, sai do estoque.                          |
+| 8   | Lançamentos da Fase 2 com lote digitado | Permanecem como histórico; a partir da Fase 3 a entrada exige etiqueta ou lote cadastrado.                                                                                                                                                                                                                               |
+| 9   | Testes sem impressora                   | Impressora simulada (servidor TCP que grava o ZPL) e modo simulação do agente; nenhum serviço externo de pré-visualização.                                                                                                                                                                                               |
+
+### Etiquetas
+
+- Código `PP-NNNNNNN` único no banco (índice único também em dispositivo + sequência), nunca reutilizado.
+- Geradas na mesma transação do lançamento: uma por conjunto (com "n de N" e destaque AVULSO), uma por volume de extrusão, uma por perda, devolução e transferência; uma por entrada de lote comprado, moído/reciclado e mistura.
+- A leitura aceita o código de barras completo (com ou sem `]C1`, com separador GS ou parênteses) e o código legível digitado, com minúsculas e sem zeros à esquerda (`t3-1245` = `T3-0001245`).
+- Impressão: a API monta o ZPL (layout ativo do tipo — o primeiro por nome — ou o escolhido; impressora padrão do layout ou a escolhida), registra a tentativa e devolve ao dispositivo; o dispositivo envia ao agente e informa o resultado. Falha mantém "impressão pendente"; a tela de etiquetas reenvia as pendentes.
+- Etiqueta que já teve impressão com sucesso sai como "2ª VIA"; cada reimpressão conta em `reimpressoes` e é auditada.
+- Modelos ZPL usam `{{campo}}` e seções `{{#campo}}...{{/campo}}` (só aparecem com valor, como AVULSO e 2ª VIA). Valores têm `^` e `~` removidos. `{{larguraPontos}}`/`{{alturaPontos}}` são calculados pelo tamanho do layout e pela resolução da impressora. Os modelos iniciais (12) são para 203 dpi e editáveis.
+- Peso no GS1-128: (3103) até 999,999 kg; acima disso a precisão cai (3102, 3101, 3100) para caber nos 6 dígitos.
+
+### Matéria-prima e estoque
+
+- Saldo é sempre a soma dos movimentos (entrada no local de destino − saída do local de origem), por lote e local (matéria-prima) ou por produto e local (produto acabado/semiacabado).
+- Mistura exige ao menos dois componentes, escolhidos por lote **e local**; percentuais calculados sobre o total, com 2 casas.
+- Devolução e transferência não podem passar do consumo líquido daquele lote pela OP.
+- Recebimento no estoque só aceita etiqueta de produto (acabado/semiacabado) emitida, em local de produto acabado; recusa inexistente (404), cancelada ou já recebida (409, com data, usuário e local do recebimento) e etiqueta de outro tipo (422).
+- A tela de recebimento lista os últimos 30 dias, conforme o parâmetro `visao_recebimento`. A baixa do estoque de produto acontece na exportação (Fase 4).
+- O setor de matéria-prima recebe etiquetas de devolução e de extrusão; lotes podem ser transferidos entre locais de matéria-prima.
+
+### Agente de impressão
+
+- Node sem dependências: `POST /imprimir` com `{ host, porta, zpl }` e cabeçalho `x-token`; `GET /saude`. Valida token, porta permitida (`AGENTE_PORTAS`, padrão 9100), hosts permitidos opcionais (`AGENTE_HOSTS`) e ZPL (`^XA`). CORS configurável e cabeçalho de acesso à rede privada do Chrome.
+- Entra no `docker-compose.yml` (porta 9180). Em implantação na nuvem, deve rodar em um computador da rede da fábrica.
+
+### Correções encontradas durante os testes
+
+- Na abertura da página, uma falha de rede na checagem da sessão (ou uma navegação que interrompe a requisição) apagava os tokens e deslogava o usuário; o mesmo ocorria quando a renovação do token falhava por rede. Agora só uma recusa do servidor (401/403) encerra a sessão; falha de rede mantém a sessão com os dados do usuário guardados no dispositivo.

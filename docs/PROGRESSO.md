@@ -10,6 +10,51 @@
 | 6 — Manutenção                                   | Não iniciada |            |
 | 7 — Offline e implantação                        | Não iniciada |            |
 
+## Fase 3 — Etiquetas, matéria-prima e estoque
+
+### O que foi feito
+
+**`packages/shared`**: código da etiqueta, montagem e leitura de GS1-128, preenchimento de modelos ZPL com seções condicionais, modelos iniciais 100 × 150 e 100 × 50 para os 6 tipos, esquemas de lote, mistura, recebimento e impressão.
+
+**API**
+
+- Migration `fase3_etiquetas_estoque`: etiqueta, sequência por dispositivo, impressão, lote de material, mistura e componentes, movimento de estoque e recebimento.
+- Etiquetas geradas pelos lançamentos (conjuntos, volumes de extrusão, perdas, devoluções, transferências) e pelo setor de matéria-prima (compra, moído/reciclado, mistura); consulta por leitura; impressão com registro do resultado; reimpressão "2ª via"; impressão de teste de layout.
+- Matéria-prima: entrada de lote comprado, moído/reciclado, mistura (baixa dos componentes, novo lote e etiqueta), recebimento de devoluções e de volumes de extrusão, transferência entre locais, saldo por lote e local; ordem de extrusão pelo setor.
+- Estoque: consulta da etiqueta lida, recebimento em local, lista conforme o parâmetro de visão, saldo por local.
+- Lançamentos de entrada de matéria-prima, devolução, transferência e semiacabado passam a ler etiqueta/lote e movimentar o estoque.
+- Dados de exemplo: 12 layouts, 7 lotes com etiqueta do posto MP e o produto de mistura MIS-PP-AZ.
+
+**Agente de impressão** (`apps/print-agent`): HTTP → TCP 9100, token, portas/hosts permitidos, HTTPS opcional, modo simulação, impressora simulada para testes, Dockerfile e serviço no compose.
+
+**Front-end**: Configurar este posto (dispositivo, agente e teste), impressão automática após cada lançamento com aviso de pendência, Etiquetas (filtros, pendentes, reenviar, reimprimir), Matéria-prima (lotes e saldo, compra, mistura, receber da produção, moído/reciclado, ordem de extrusão), Estoque (recebimento com campo de leitura e confirmação; saldo por local), Layouts com impressão de teste; leitura de etiqueta/lote na tela de lançamento e campos de fluidez e destinos na extrusão.
+
+### Critérios de aceite
+
+| Critério                                                                                                                     | Como foi verificado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lançar 3 conjuntos imprime 3 etiquetas com códigos distintos; falha de impressão deixa a etiqueta pendente e reenviável      | Integração (`etiquetas.test.ts`): 3 etiquetas `T1-0000001..3`, reenvio do mesmo lançamento devolve as mesmas; falha informada mantém pendente; reenvio com sucesso limpa a pendência; reimpressão sai como "2ª VIA" e é auditada. Ponta a ponta (`fase3.spec.ts`): 3 ZPLs com códigos distintos chegam à impressora simulada pelo agente; com a impressora fora (porta fechada) o aviso de pendência aparece, "Reenviar 1 pendente(s)" imprime depois que a impressora volta. Agente: testes de envio TCP e de falha (502). |
+| O superusuário altera o tamanho e o modelo de uma etiqueta e imprime um teste                                                | Integração: layout alterado para 60 × 40 mm e modelo novo → teste gera `^PW480^LL320...`; apontador recebe 403. Ponta a ponta: edição na tela (100 × 40 mm, ZPL novo) e "Imprimir teste" → a impressora simulada recebe exatamente `^XA^PW799^LL320...TESTE E2E TS-0000000...^XZ`.                                                                                                                                                                                                                                          |
+| Uma mistura dá baixa nos lotes componentes, gera novo lote e etiqueta, e pode ser lida na entrada de matéria-prima de uma OP | Integração: saldo insuficiente recusado; mistura 40 kg PP + 2 kg MB → saldos 60 e 48, novo lote 42 kg, composição 95,24%/4,76% na etiqueta; leitura do código de barras completo da mistura na entrada da OP baixa 30 kg (saldo 12) e recusa 20 kg. Ponta a ponta: mistura pela tela, etiqueta impressa com a composição, lote listado, apontador lê o código da mistura e lança 10 kg.                                                                                                                                     |
+| A etiqueta de extrusão traz todos os campos da seção 8                                                                       | Integração: OP de extrusão criada pelo setor de matéria-prima; volumes com operador, fluidez e destinos → ZPL contém material, peso, data de fabricação, lote, OP de extrusão, operador, turno, fluidez, cor, destinos e o GS1 com (3103).                                                                                                                                                                                                                                                                                  |
+| Etiqueta lida no estoque muda para recebida e soma no saldo do local; segunda leitura é recusada                             | Integração e ponta a ponta: leitura (GS1 completo ou código digitado) mostra produto, quantidade, OP e turno; confirmação → RECEBIDA, saldo da Expedição 30 peças; segunda leitura recusada com data, usuário e local; inexistente, cancelada e de outro tipo também recusadas.                                                                                                                                                                                                                                             |
+| O parâmetro de visão do recebimento alterna entre pendentes, recebidas e ambas                                               | Integração: AMBAS → emitidas e recebidas; PENDENTES → só emitidas; RECEBIDAS → só a recebida. Ponta a ponta: superusuário muda para "Só pendentes" e a tela do estoque passa a mostrar "(só pendentes…)" sem a etiqueta recebida.                                                                                                                                                                                                                                                                                           |
+
+### Resultado das verificações finais
+
+- Migrations sem pendências; aplicadas do zero nos bancos de teste, e2e e Docker.
+- Testes: shared 72/72, API 94/94, agente 4/4, web 3/3, ponta a ponta 11/11 (Fases 1, 2 e 3).
+- Lint sem problemas, Prettier sem diferenças, typecheck sem erros.
+- Docker: 4 serviços (banco, API, web, agente) com volume vazio; impressão de etiqueta pela API → agente (modo simulação) com o GS1 correto. Mesma ressalva de rede da sandbox.
+
+### Pendências e observações
+
+- Cancelamento de etiqueta por correção e estorno de recebimento: **Fase 4** (RN-09).
+- Baixa do estoque de produto na exportação: **Fase 4**.
+- Sequência de etiquetas gerada no próprio dispositivo (offline): **Fase 7**.
+- Os modelos ZPL foram montados para 203 dpi e não foram impressos em uma Zebra física; vale imprimir um teste de cada layout na implantação e ajustar posições/tamanho do código de barras (códigos GS1 longos podem precisar de `^BY` menor no 100 × 50).
+- Em produção com HTTPS, o agente precisa de certificado confiável pelos tablets (ver decisões).
+
 ## Fase 2 — OPs, rodadas e apontamento
 
 ### O que foi feito

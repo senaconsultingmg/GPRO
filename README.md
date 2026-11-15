@@ -13,6 +13,12 @@ Acesse `http://localhost:8080` (porta em `PORTA_WEB`). A documentação da API f
 
 Na primeira subida, com `CARREGAR_DADOS_EXEMPLO=true`, o sistema carrega os dados de exemplo. Com `false`, sobe vazio e o primeiro acesso é feito com o usuário inicial abaixo.
 
+## Impressão de etiquetas
+
+O agente de impressão (`apps/print-agent`, porta 9180) recebe o ZPL dos tablets e envia às impressoras Zebra pela porta 9100. Ele sobe junto no `docker-compose.yml`; quando a aplicação estiver na nuvem, rode-o em um computador da rede da fábrica (`node apps/print-agent/src/principal.js`, com `AGENTE_TOKEN`). Em cada tablet/PC, abra **Configurar este posto** (menu do usuário), escolha o dispositivo (prefixo das etiquetas) e informe o endereço e o token do agente.
+
+Para testar sem impressora: `AGENTE_SIMULAR_DIR=/tmp/etiquetas` grava o ZPL em arquivos, ou use a impressora simulada `node apps/print-agent/src/simulador-impressora.js` (porta 9100).
+
 ## Usuários
 
 | Login                                                    | Senha                                          | Perfil            |

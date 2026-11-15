@@ -3,7 +3,7 @@ import { usaMolde, type RodadaEntrada, type TipoMaquina } from '@apontamento/sha
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditoriaService } from '../auditoria/auditoria.service.js';
-import { conflito, ErroNegocio, naoEncontrado, type DetalheErro } from '../comum/erros.js';
+import { conflito, ErroNegocio, naoEncontrado, proibido, type DetalheErro } from '../comum/erros.js';
 import type { UsuarioAutenticado } from '../comum/decoradores.js';
 import { compatibilidade } from '../moldes/moldes.service.js';
 
@@ -60,9 +60,12 @@ export class RodadasService {
   }
 
   /** Valida a rodada e devolve as OPs com a ficha vigente a congelar. */
-  private async validar(dados: RodadaEntrada, rodadaId?: string) {
+  private async validar(dados: RodadaEntrada, rodadaId?: string, usuario?: UsuarioAutenticado) {
     const maquina = await this.prisma.maquina.findUnique({ where: { id: dados.maquinaId } });
     if (!maquina) throw naoEncontrado('Máquina');
+    if (usuario && !usuario.perfis.includes('PCP') && maquina.tipo !== 'EXTRUSORA') {
+      throw proibido('O setor de matéria-prima só cria rodadas de extrusora.');
+    }
     if (!maquina.ativa) throw new ErroNegocio('Máquina inativa.');
     const comMolde = usaMolde(maquina.tipo as TipoMaquina);
     let molde = null;
@@ -168,7 +171,7 @@ export class RodadasService {
   }
 
   async criar(dados: RodadaEntrada, usuario: UsuarioAutenticado) {
-    const { ops, moldeId } = await this.validar(dados);
+    const { ops, moldeId } = await this.validar(dados, undefined, usuario);
     const id = await this.prisma.$transaction(async (tx) => {
       const r = await tx.rodada.create({
         data: {
@@ -194,7 +197,7 @@ export class RodadasService {
   async atualizar(id: string, dados: RodadaEntrada, usuario: UsuarioAutenticado) {
     const anterior = await this.obter(id);
     if (anterior.situacao !== 'PLANEJADA') throw conflito('Somente rodada planejada pode ser alterada.');
-    const { ops, moldeId } = await this.validar(dados, id);
+    const { ops, moldeId } = await this.validar(dados, id, usuario);
     await this.prisma.$transaction(async (tx) => {
       await tx.rodadaOp.deleteMany({ where: { rodadaId: id } });
       const novo = await tx.rodada.update({

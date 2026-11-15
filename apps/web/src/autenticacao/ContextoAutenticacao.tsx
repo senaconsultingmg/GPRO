@@ -1,6 +1,24 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { temPermissao, type Perfil, type Permissao } from '@apontamento/shared';
-import { api, definirAoExpirarSessao, tokens } from '../api/cliente';
+import { api, definirAoExpirarSessao, ErroApi, tokens } from '../api/cliente';
+
+const CHAVE_USUARIO = 'apontamento.usuario';
+function usuarioGuardado(): UsuarioLogado | null {
+  try {
+    const v = localStorage.getItem(CHAVE_USUARIO);
+    return v ? (JSON.parse(v) as UsuarioLogado) : null;
+  } catch {
+    return null;
+  }
+}
+function guardarUsuario(u: UsuarioLogado | null) {
+  try {
+    if (u) localStorage.setItem(CHAVE_USUARIO, JSON.stringify(u));
+    else localStorage.removeItem(CHAVE_USUARIO);
+  } catch {
+    /* armazenamento indisponível */
+  }
+}
 
 export interface UsuarioLogado {
   id: string;
@@ -31,15 +49,27 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      setUsuario(await api.get<UsuarioLogado>('/autenticacao/eu'));
-    } catch {
-      tokens.limpar();
-      setUsuario(null);
+      const u = await api.get<UsuarioLogado>('/autenticacao/eu');
+      guardarUsuario(u);
+      setUsuario(u);
+    } catch (e) {
+      // Só encerra a sessão quando o servidor recusa as credenciais. Falha de rede (servidor fora,
+      // navegação interrompida) mantém a sessão com os dados guardados neste dispositivo.
+      if (e instanceof ErroApi && (e.status === 401 || e.status === 403)) {
+        tokens.limpar();
+        guardarUsuario(null);
+        setUsuario(null);
+      } else {
+        setUsuario(usuarioGuardado());
+      }
     }
   }, []);
 
   useEffect(() => {
-    definirAoExpirarSessao(() => setUsuario(null));
+    definirAoExpirarSessao(() => {
+      guardarUsuario(null);
+      setUsuario(null);
+    });
     recarregar().finally(() => setCarregando(false));
   }, [recarregar]);
 
@@ -49,6 +79,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
       { login, senha },
     );
     tokens.salvar(r.tokenAcesso, r.tokenRenovacao);
+    guardarUsuario(r.usuario);
     setUsuario(r.usuario);
   }, []);
 
@@ -56,6 +87,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
     const renovacao = tokens.renovacao();
     if (renovacao) await api.post('/autenticacao/sair', { tokenRenovacao: renovacao }).catch(() => undefined);
     tokens.limpar();
+    guardarUsuario(null);
     setUsuario(null);
   }, []);
 

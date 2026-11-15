@@ -1,0 +1,12 @@
+{
+  "name": "@apontamento/print-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agente de impressão: recebe ZPL por HTTP e envia à impressora Zebra por TCP (porta 9100).",
+  "scripts": {
+    "start": "node src/principal.js",
+    "simulador": "node src/simulador-impressora.js",
+    "test": "node --test src/*.test.js"
+  }
+}

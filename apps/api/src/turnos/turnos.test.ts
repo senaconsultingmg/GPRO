@@ -46,6 +46,7 @@ describe('Turno de apontamento — fluxo completo', () => {
       .http()
       .post(`/api/turnos/${turnoId}/eventos`)
       .set(auth(token))
+      .set('x-posto', id['posto:T1'])
       .send({ id: randomUUID(), ...corpo });
 
   beforeAll(async () => {
@@ -61,6 +62,9 @@ describe('Turno de apontamento — fluxo completo', () => {
     for (const tp of await ctx.prisma.tipoPerda.findMany()) id[`perda:${tp.descricao}`] = tp.id;
     for (const o of await ctx.prisma.ordemProducao.findMany()) id[o.numeroErp ?? 'EXT'] = o.id;
     for (const r of await ctx.prisma.rodada.findMany()) id[`rodada:${r.maquinaId}`] = r.id;
+    id['posto:T1'] = (await ctx.prisma.dispositivo.findUniqueOrThrow({ where: { prefixo: 'T1' } })).id;
+    for (const l of await ctx.prisma.loteMaterial.findMany({ include: { material: true } }))
+      id[`lote:${l.material.codigo}`] = l.numero;
     id['equipe:A'] = (await ctx.prisma.equipe.findUniqueOrThrow({ where: { letra: 'A' } })).id;
     conjuntoCad1 = (
       await ctx.prisma.conjuntoPadrao.findFirstOrThrow({ where: { produtoId: id['CAD-0031'] } })
@@ -341,8 +345,7 @@ describe('Turno de apontamento — fluxo completo', () => {
           maquinaId: id['INJ-01'],
           horaOcorrencia: em(-0.9),
           divisaoId: div['04508401001'],
-          materialId: id['PP-H103'],
-          lote: 'L-123',
+          leitura: id['lote:PP-H103'],
           quantidadeKg: 50,
         })
       ).status,
@@ -354,8 +357,7 @@ describe('Turno de apontamento — fluxo completo', () => {
           maquinaId: id['INJ-01'],
           horaOcorrencia: em(-0.8),
           divisaoId: div['04508401001'],
-          materialId: id['PP-H103'],
-          lote: 'L-123',
+          leitura: id['lote:PP-H103'],
           quantidadeKg: 5,
         })
       ).status,
@@ -368,8 +370,7 @@ describe('Turno de apontamento — fluxo completo', () => {
           maquinaId: id['INJ-01'],
           horaOcorrencia: em(-0.8),
           divisaoId: div['04508401001'],
-          materialId: id['CAD-0032'],
-          lote: 'x',
+          leitura: 'CAD-0032',
           quantidadeKg: 1,
         })
       ).status,
@@ -382,8 +383,7 @@ describe('Turno de apontamento — fluxo completo', () => {
       maquinaId: id['INJ-01'],
       horaOcorrencia: new Date().toISOString(),
       divisaoId: div['04508401002'],
-      materialId: id['PP-H103'],
-      lote: 'L-123',
+      leitura: id['lote:PP-H103'],
       quantidadeKg: 10,
     });
     expect(agora.body.evento.marcaHorario).toBe('NO_MOMENTO');
@@ -392,8 +392,7 @@ describe('Turno de apontamento — fluxo completo', () => {
       maquinaId: id['INJ-01'],
       horaOcorrencia: em(0.5),
       divisaoId: div['04508401002'],
-      materialId: id['MB-AZ01'],
-      lote: 'M-9',
+      leitura: id['lote:MB-AZ01'],
       quantidadeKg: 1,
     });
     expect(antecipado.body.evento.marcaHorario).toBe('ANTECIPADO');
@@ -424,8 +423,18 @@ describe('Turno de apontamento — fluxo completo', () => {
       tipoPerdaId: id['perda:Canal'],
       pesoKg: 0.7,
     };
-    const a = await ctx.http().post(`/api/turnos/${turno1}/eventos`).set(auth(apontador)).send(corpo);
-    const b = await ctx.http().post(`/api/turnos/${turno1}/eventos`).set(auth(apontador)).send(corpo);
+    const a = await ctx
+      .http()
+      .post(`/api/turnos/${turno1}/eventos`)
+      .set(auth(apontador))
+      .set('x-posto', id['posto:T1'])
+      .send(corpo);
+    const b = await ctx
+      .http()
+      .post(`/api/turnos/${turno1}/eventos`)
+      .set(auth(apontador))
+      .set('x-posto', id['posto:T1'])
+      .send(corpo);
     expect(a.body.duplicado).toBe(false);
     expect(b.body.duplicado).toBe(true);
     expect(await ctx.prisma.evento.count({ where: { id: corpo.id } })).toBe(1);
@@ -612,8 +621,7 @@ describe('Turno de apontamento — fluxo completo', () => {
       maquinaId: id['INJ-01'],
       horaOcorrencia: new Date().toISOString(),
       divisaoId: div['T2-OP1'],
-      materialId: id['PP-H103'],
-      lote: 'L-123',
+      leitura: id['lote:PP-H103'],
       quantidadeKg: 10,
       divisaoDestinoId: d.body.id,
     });

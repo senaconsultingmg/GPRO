@@ -147,8 +147,9 @@ export class TurnosController {
     @Body(new ValidacaoZod(esquemaEvento)) entrada: EventoEntrada,
     @UsuarioAtual() usuario: UsuarioAutenticado,
     @Headers('x-dispositivo') dispositivo?: string,
+    @Headers('x-posto') posto?: string,
   ) {
-    return this.servico.lancar(id, entrada, usuario, disp(dispositivo));
+    return this.servico.lancar(id, entrada, usuario, disp(dispositivo), posto ?? null);
   }
 
   @Post(':id/fechar')

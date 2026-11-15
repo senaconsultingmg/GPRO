@@ -1,4 +1,5 @@
 /** Cliente HTTP da API com renovação automática do token de acesso. */
+import { lerPosto } from './posto';
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
 
 const CHAVE_ACESSO = 'apontamento.tokenAcesso';
@@ -66,10 +67,12 @@ export function definirAoExpirarSessao(f: () => void): void {
   aoExpirarSessao = f;
 }
 
-let renovacaoEmAndamento: Promise<boolean> | null = null;
-async function renovar(): Promise<boolean> {
+/** Resultado da renovação: renovado, recusado pelo servidor ou falha de rede (sessão mantida). */
+type Renovacao = 'renovado' | 'recusado' | 'falha';
+let renovacaoEmAndamento: Promise<Renovacao> | null = null;
+async function renovar(): Promise<Renovacao> {
   const tokenRenovacao = tokens.renovacao();
-  if (!tokenRenovacao) return false;
+  if (!tokenRenovacao) return 'recusado';
   renovacaoEmAndamento ??= (async () => {
     try {
       const r = await fetch(`${BASE}/autenticacao/renovar`, {
@@ -77,12 +80,13 @@ async function renovar(): Promise<boolean> {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ tokenRenovacao }),
       });
-      if (!r.ok) return false;
+      if (r.status === 401 || r.status === 403) return 'recusado';
+      if (!r.ok) return 'falha';
       const corpo = await r.json();
       tokens.salvar(corpo.tokenAcesso, corpo.tokenRenovacao);
-      return true;
+      return 'renovado';
     } catch {
-      return false;
+      return 'falha';
     } finally {
       setTimeout(() => (renovacaoEmAndamento = null), 0);
     }
@@ -92,6 +96,8 @@ async function renovar(): Promise<boolean> {
 
 async function executar(metodo: string, caminho: string, corpo?: unknown): Promise<Response> {
   const cabecalhos: Record<string, string> = { 'x-dispositivo': idDispositivo() };
+  const posto = lerPosto().postoId;
+  if (posto) cabecalhos['x-posto'] = posto;
   const acesso = tokens.acesso();
   if (acesso) cabecalhos.authorization = `Bearer ${acesso}`;
   const formulario = corpo instanceof FormData;
@@ -108,11 +114,14 @@ export async function requisitar<T>(metodo: string, caminho: string, corpo?: unk
   try {
     r = await executar(metodo, caminho, corpo);
     if (r.status === 401 && !caminho.startsWith('/autenticacao/entrar') && tokens.renovacao()) {
-      if (await renovar()) {
+      const renovacao = await renovar();
+      if (renovacao === 'renovado') {
         r = await executar(metodo, caminho, corpo);
-      } else {
+      } else if (renovacao === 'recusado') {
         tokens.limpar();
         aoExpirarSessao();
+      } else {
+        throw new Error('falha de rede na renovação');
       }
     }
   } catch {
@@ -130,7 +139,7 @@ export async function requisitar<T>(metodo: string, caminho: string, corpo?: unk
 /** Baixa um arquivo da API (ex.: modelo de Excel) e oferece ao navegador. */
 async function baixar(caminho: string, nomeArquivo: string): Promise<void> {
   let r = await executar('GET', caminho);
-  if (r.status === 401 && (await renovar())) r = await executar('GET', caminho);
+  if (r.status === 401 && (await renovar()) === 'renovado') r = await executar('GET', caminho);
   if (!r.ok) {
     const dados = await r.json().catch(() => ({}));
     throw new ErroApi(r.status, dados?.mensagem ?? `Erro ${r.status}`);

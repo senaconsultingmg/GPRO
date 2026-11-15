@@ -42,10 +42,21 @@ export const PERMISSOES = {
   'excel.mapear': ['SUPERUSUARIO'],
   'importacoes.ler': ['PCP', 'SUPERUSUARIO'],
   'rodadas.ler': TODOS,
-  'rodadas.escrever': ['PCP'],
+  /** PCP cria qualquer rodada; matéria-prima só rodadas de extrusora (Fase 3). */
+  'rodadas.escrever': ['PCP', 'MATERIA_PRIMA'],
   'turnos.ler': TODOS,
   /** Abrir/fechar turno, ligar máquinas, criar divisões e lançar eventos (somente no próprio turno). */
   'apontamento.lancar': ['APONTADOR'],
+  // Fase 3
+  /** Ordem de extrusão: PCP ou setor de matéria-prima (sem número do ERP, P10). */
+  'ordens.extrusao': ['PCP', 'MATERIA_PRIMA'],
+  'etiquetas.ler': TODOS,
+  /** Emitir e reimprimir etiquetas. */
+  'etiquetas.imprimir': ['APONTADOR', 'MATERIA_PRIMA', 'ESTOQUE', 'SUPERUSUARIO'],
+  'materiaprima.ler': ['MATERIA_PRIMA', 'PCP', 'APONTADOR', 'SUPERUSUARIO'],
+  'materiaprima.escrever': ['MATERIA_PRIMA'],
+  'estoque.ler': ['ESTOQUE', 'PCP', 'SUPERUSUARIO', 'MATERIA_PRIMA'],
+  'estoque.receber': ['ESTOQUE'],
 } as const satisfies Record<string, Perfil[]>;
 
 export type Permissao = keyof typeof PERMISSOES;

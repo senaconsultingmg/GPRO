@@ -26,6 +26,11 @@ import { PaginaImportacoes } from './paginas/Importacoes';
 import { PaginaRodadas } from './paginas/Rodadas';
 import { PaginaApontamento } from './paginas/apontamento/Apontamento';
 import { PaginaRelatorioTurno, PaginaTurnos } from './paginas/Turnos';
+import { PaginaPosto } from './paginas/Posto';
+import { PaginaEtiquetas } from './paginas/Etiquetas';
+import { PaginaEstoque } from './paginas/Estoque';
+import { PaginaMateriaPrima } from './paginas/MateriaPrima';
+import { PaginaLayouts } from './paginas/Layouts';
 import * as cfg from './cadastros/configuracoes';
 
 dayjs.locale('pt-br');
@@ -35,6 +40,13 @@ const tema = createTheme({
   primaryColor: 'blue',
   defaultRadius: 'md',
   components: {
+    // Rótulos curtos (situação, origem…) nunca cortados com reticências nas tabelas.
+    Badge: {
+      styles: {
+        root: { overflow: 'visible', flexShrink: 0 },
+        label: { overflow: 'visible', textOverflow: 'clip' },
+      },
+    },
     Button: { defaultProps: { size: 'md' } },
     TextInput: { defaultProps: { size: 'md' } },
     PasswordInput: { defaultProps: { size: 'md' } },
@@ -57,7 +69,6 @@ const CADASTROS: [string, ConfigCadastro, Permissao][] = [
   ['/tipos-perda', cfg.configTiposPerda, 'cadastros.ler'],
   ['/locais-estoque', cfg.configLocaisEstoque, 'cadastros.ler'],
   ['/impressoras', cfg.configImpressoras, 'cadastros.ler'],
-  ['/layouts-etiqueta', cfg.configLayouts, 'cadastros.ler'],
   ['/dispositivos', cfg.configDispositivos, 'cadastros.ler'],
   ['/horarios-turno', cfg.configHorarios, 'cadastros.ler'],
   ['/equipes', cfg.configEquipes, 'cadastros.ler'],
@@ -179,6 +190,39 @@ function Aplicacao() {
           element={
             <Protegida permissao="turnos.ler">
               <PaginaRelatorioTurno />
+            </Protegida>
+          }
+        />
+        <Route path="/posto" element={<PaginaPosto />} />
+        <Route
+          path="/etiquetas"
+          element={
+            <Protegida permissao="etiquetas.ler">
+              <PaginaEtiquetas />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/estoque"
+          element={
+            <Protegida permissao="estoque.ler">
+              <PaginaEstoque />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/materia-prima"
+          element={
+            <Protegida permissao="materiaprima.ler">
+              <PaginaMateriaPrima />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/layouts-etiqueta"
+          element={
+            <Protegida permissao="cadastros.ler">
+              <PaginaLayouts />
             </Protegida>
           }
         />

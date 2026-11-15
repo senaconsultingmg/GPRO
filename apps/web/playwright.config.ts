@@ -22,6 +22,18 @@ export default defineConfig({
   ],
   webServer: [
     {
+      command: 'node ../print-agent/src/simulador-impressora.js',
+      port: 9101,
+      env: { SIMULADOR_PORTA: '9101', SIMULADOR_DIR: 'impressora-simulada' },
+      reuseExistingServer: false,
+    },
+    {
+      command: 'node ../print-agent/src/principal.js',
+      url: 'http://localhost:9182/saude',
+      env: { AGENTE_PORTA: '9182', AGENTE_TOKEN: 'token-e2e', AGENTE_PORTAS: '9101,9102' },
+      reuseExistingServer: false,
+    },
+    {
       command: 'node ../api/dist/main.js',
       url: 'http://localhost:3100/api/saude',
       env: { DATABASE_URL: URL_E2E, PORTA_API: '3100', JWT_SEGREDO: 'segredo-e2e' },
