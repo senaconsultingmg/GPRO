@@ -43,6 +43,8 @@ import { AprovacoesController } from './aprovacoes/aprovacoes.controller.js';
 import { ApuracaoService } from './apuracao/apuracao.service.js';
 import { ApuracaoController } from './apuracao/apuracao.controller.js';
 import { Barramento } from './comum/barramento.js';
+import { ManutencaoService } from './manutencao/manutencao.service.js';
+import { ManutencaoController } from './manutencao/manutencao.controller.js';
 import { PainelService } from './painel/painel.service.js';
 import { PainelController } from './painel/painel.controller.js';
 import { IndicadoresService } from './indicadores/indicadores.service.js';
@@ -77,6 +79,7 @@ import { IndicadoresController } from './indicadores/indicadores.controller.js';
     ApuracaoController,
     PainelController,
     IndicadoresController,
+    ManutencaoController,
   ],
   providers: [
     PrismaService,
@@ -102,6 +105,7 @@ import { IndicadoresController } from './indicadores/indicadores.controller.js';
     Barramento,
     PainelService,
     IndicadoresService,
+    ManutencaoService,
     { provide: APP_GUARD, useClass: GuardaAcesso },
     { provide: APP_FILTER, useClass: FiltroErros },
   ],

@@ -434,6 +434,22 @@ export class EventosService {
       },
     });
 
+    // RN-14: parada com motivo de manutenção abre a solicitação, sem ação extra do apontador.
+    if (entrada.tipo === 'PARADA' && dados.geraSolicitacaoManutencao === true && !ctx.corrigeEventoId) {
+      const motivo = await tx.motivoParada.findUniqueOrThrow({
+        where: { id: dados.motivoParadaId as string },
+      });
+      await tx.solicitacaoManutencao.create({
+        data: {
+          maquinaId: entrada.maquinaId,
+          eventoParadaId: evento.id,
+          solicitanteId: usuario.id,
+          ocorridaEm: hora,
+          descricao: `${mt.maquina.codigo}: ${motivo.codigo} — ${motivo.descricao}${entrada.justificativa ? ` — ${entrada.justificativa}` : ''}`,
+        },
+      });
+    }
+
     // Pendências para o líder (decisão na Fase 4).
     if (marca !== 'NO_MOMENTO' && !ctx.corrigeEventoId) {
       await tx.aprovacao.create({

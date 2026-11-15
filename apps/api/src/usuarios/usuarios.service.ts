@@ -14,6 +14,8 @@ const SELECAO = {
   perfis: true,
   equipeId: true,
   ativo: true,
+  especialidades: true,
+  controladorManutencao: true,
   deveTrocarSenha: true,
   criadoEm: true,
   atualizadoEm: true,

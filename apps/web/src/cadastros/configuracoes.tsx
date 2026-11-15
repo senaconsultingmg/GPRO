@@ -17,6 +17,7 @@ import {
   ROTULO_DIA_SEMANA,
   ROTULO_MODALIDADE_TURNO,
   ROTULO_PERFIL,
+  ROTULO_ESPECIALIDADE,
   ROTULO_TIPO_EMBALAGEM,
   ROTULO_TIPO_ETIQUETA,
   ROTULO_TIPO_LOCAL_ESTOQUE,
@@ -25,6 +26,7 @@ import {
   ROTULO_UNIDADE,
   usaMolde,
   type Perfil,
+  type EspecialidadeManutencao,
   type TipoEmbalagem,
   type TipoEtiqueta,
   type TipoLocalEstoque,
@@ -591,7 +593,16 @@ export const configUsuarios: ConfigCadastro = {
   esquemaEdicao: esquemaUsuarioAtualizar,
   campoAtivo: 'ativo',
   permissaoEscrita: 'usuarios.escrever',
-  valoresIniciais: { nome: '', login: '', senha: '', perfis: [], equipeId: null, ativo: true },
+  valoresIniciais: {
+    nome: '',
+    login: '',
+    senha: '',
+    perfis: [],
+    equipeId: null,
+    ativo: true,
+    especialidades: [],
+    controladorManutencao: false,
+  },
   paraFormulario: (r) => ({
     nome: r.nome,
     login: r.login,
@@ -599,6 +610,8 @@ export const configUsuarios: ConfigCadastro = {
     perfis: r.perfis,
     equipeId: r.equipeId,
     ativo: r.ativo,
+    especialidades: r.especialidades ?? [],
+    controladorManutencao: r.controladorManutencao ?? false,
   }),
   paraEnvio: (v, edicao) => ({ ...v, senha: edicao && !v.senha ? null : v.senha }),
   campos: [
@@ -622,11 +635,37 @@ export const configUsuarios: ConfigCadastro = {
         filtro: (r) => r.ativo === true,
       },
     },
+    {
+      nome: 'especialidades',
+      rotulo: 'Especialidades de manutenção',
+      tipo: 'multienum',
+      opcoes: ROTULO_ESPECIALIDADE,
+      ajuda: 'Para técnicos do perfil Manutenção: só veem e executam etapas destas especialidades.',
+    },
+    {
+      nome: 'controladorManutencao',
+      rotulo: 'Controlador de manutenção',
+      tipo: 'booleano',
+      ajuda: 'Faz a triagem, aprova as solicitações, monta as etapas e encerra as ordens de serviço.',
+    },
     { nome: 'ativo', rotulo: 'Ativo', tipo: 'booleano' },
   ],
   colunas: [
     { rotulo: 'Nome', valor: (r) => <Text fw={600}>{r.nome as string}</Text> },
     { rotulo: 'Login', valor: (r) => r.login as string },
+    {
+      rotulo: 'Manutenção',
+      valor: (r) => (
+        <Group gap={4}>
+          {r.controladorManutencao ? <Badge color="grape">Controlador</Badge> : null}
+          {((r.especialidades as EspecialidadeManutencao[] | undefined) ?? []).map((e) => (
+            <Badge key={e} variant="outline">
+              {ROTULO_ESPECIALIDADE[e]}
+            </Badge>
+          ))}
+        </Group>
+      ),
+    },
     {
       rotulo: 'Perfis',
       valor: (r) => (

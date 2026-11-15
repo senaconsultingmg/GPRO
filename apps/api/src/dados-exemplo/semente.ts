@@ -14,6 +14,8 @@ import {
   gerarEscalaRevezamento,
   PARAMETROS_INICIAIS,
   somarDias,
+  type EspecialidadeManutencao,
+  type Perfil,
 } from '@apontamento/shared';
 import { criarPrismaClient } from '../prisma/prisma.service.js';
 import { ADMIN_INICIAL } from '../configuracao.js';
@@ -146,8 +148,53 @@ export async function carregarDadosExemplo(
       nome: 'Manuel Manutenção',
       login: 'manutencao@exemplo.com.br',
       perfis: ['MANUTENCAO' as const],
+      controlador: true,
     },
-  ]) {
+    // Técnicos de manutenção por especialidade (Fase 6).
+    {
+      chave: 'eletrica',
+      nome: 'Elias Elétrica',
+      login: 'eletrica@exemplo.com.br',
+      perfis: ['MANUTENCAO' as const],
+      especialidades: ['ELETRICA' as const],
+    },
+    {
+      chave: 'mecanica',
+      nome: 'Mário Mecânica',
+      login: 'mecanica@exemplo.com.br',
+      perfis: ['MANUTENCAO' as const],
+      especialidades: ['MECANICA' as const, 'HIDRAULICA' as const],
+    },
+    {
+      chave: 'ferramentaria',
+      nome: 'Fernanda Ferramentaria',
+      login: 'ferramentaria@exemplo.com.br',
+      perfis: ['MANUTENCAO' as const],
+      especialidades: ['FERRAMENTARIA' as const],
+    },
+    {
+      chave: 'setup',
+      nome: 'Sérgio Setup',
+      login: 'setup@exemplo.com.br',
+      perfis: ['MANUTENCAO' as const],
+      especialidades: ['SETUP' as const],
+    },
+    {
+      chave: 'predial',
+      nome: 'Paulo Predial',
+      login: 'predial@exemplo.com.br',
+      perfis: ['MANUTENCAO' as const],
+      especialidades: ['PREDIAL' as const],
+    },
+  ] as {
+    chave: string;
+    nome: string;
+    login: string;
+    perfis: Perfil[];
+    equipe?: string;
+    controlador?: boolean;
+    especialidades?: EspecialidadeManutencao[];
+  }[]) {
     const r = await prisma.usuario.upsert({
       where: { login: u.login },
       create: {
@@ -156,6 +203,8 @@ export async function carregarDadosExemplo(
         senhaHash: hashExemplo,
         perfis: u.perfis,
         equipeId: u.equipe ? equipes[u.equipe] : null,
+        especialidades: u.especialidades ?? [],
+        controladorManutencao: u.controlador ?? false,
       },
       update: {},
     });
@@ -593,6 +642,27 @@ export async function carregarDadosExemplo(
   ]) {
     await prisma.tipoPerda.upsert({ where: { descricao: t.descricao }, create: t, update: {} });
   }
+
+  // ---------- Modelo de sequência de manutenção (Fase 6) ----------
+  await prisma.modeloSequencia.upsert({
+    where: { nome: 'Troca de câmara quente' },
+    create: {
+      nome: 'Troca de câmara quente',
+      descricao: 'Molde sai da máquina; óleo da máquina é trocado em paralelo à câmara quente.',
+      criadoPorId: usuarios.manutencao,
+      etapas: [
+        { ordem: 1, descricao: 'Retirar o molde da máquina', especialidade: 'SETUP' },
+        { ordem: 2, descricao: 'Abrir o molde', especialidade: 'FERRAMENTARIA' },
+        { ordem: 3, descricao: 'Avaliar a câmara quente', especialidade: 'ELETRICA' },
+        { ordem: 4, descricao: 'Trocar o óleo da máquina', especialidade: 'MECANICA' },
+        { ordem: 4, descricao: 'Trocar a câmara quente', especialidade: 'ELETRICA' },
+        { ordem: 5, descricao: 'Limpar o molde', especialidade: 'FERRAMENTARIA' },
+        { ordem: 6, descricao: 'Fechar o molde', especialidade: 'FERRAMENTARIA' },
+        { ordem: 7, descricao: 'Recolocar o molde na máquina', especialidade: 'SETUP' },
+      ],
+    },
+    update: {},
+  });
 
   // ---------- Locais, impressoras e dispositivos ----------
   for (const l of [

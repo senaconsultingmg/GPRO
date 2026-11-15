@@ -46,6 +46,9 @@ export const PERMISSOES = {
   'rodadas.escrever': ['PCP', 'MATERIA_PRIMA'],
   'turnos.ler': TODOS,
   'paineis.ler': TODOS,
+  'manutencao.ler': ['MANUTENCAO', 'LIDER', 'PCP', 'SUPERUSUARIO'],
+  'manutencao.solicitar': ['MANUTENCAO', 'LIDER'],
+  'manutencao.executar': ['MANUTENCAO'],
   /** Abrir/fechar turno, ligar máquinas, criar divisões e lançar eventos (somente no próprio turno). */
   'apontamento.lancar': ['APONTADOR'],
   // Fase 3

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  ESPECIALIDADES_MANUTENCAO,
   MODALIDADES_TURNO,
   PERFIS,
   TIPOS_EMBALAGEM,
@@ -63,6 +64,9 @@ const baseUsuario = {
   perfis: z.array(z.enum(PERFIS)).min(1, 'Selecione ao menos um perfil.'),
   equipeId: idOpcional,
   ativo: z.boolean().default(true),
+  /** Manutenção (Fase 6): especialidades do técnico e marca de controlador. */
+  especialidades: z.array(z.enum(ESPECIALIDADES_MANUTENCAO)).default([]),
+  controladorManutencao: z.boolean().default(false),
 };
 export const esquemaUsuarioCriar = z.object({
   ...baseUsuario,

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { producaoPorOrdem } from '../ordens/producao-ordem.js';
 import { RelatorioService } from '../turnos/relatorio.service.js';
 import { estadoMaquina } from '../turnos/turnos.service.js';
+import { ManutencaoService } from '../manutencao/manutencao.service.js';
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
@@ -12,6 +13,7 @@ export class PainelService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RelatorioService) private readonly relatorio: RelatorioService,
+    @Inject(ManutencaoService) private readonly manutencao: ManutencaoService,
   ) {}
 
   async acompanhamento() {
@@ -62,11 +64,16 @@ export class PainelService {
       for (const m of c.maquinas) for (const o of m.ops) ordemIds.add(o.ordem.id);
     for (const r of rodadasAndamento) for (const o of r.ops) ordemIds.add(o.ordemId);
     const produzido = await producaoPorOrdem(this.prisma, [...ordemIds]);
+    const manutencao = await this.manutencao.maquinasComSolicitacaoAberta();
 
     const cartoes = maquinas.map((maq) => {
       const turno = abertos.find((t) => t.maquinas.some((m) => m.maquinaId === maq.id));
       const calc = turno ? calculos.get(turno.id)?.maquinas.find((m) => m.maquina.id === maq.id) : undefined;
-      const base = { maquina: { id: maq.id, codigo: maq.codigo, descricao: maq.descricao, tipo: maq.tipo } };
+      const base = {
+        maquina: { id: maq.id, codigo: maq.codigo, descricao: maq.descricao, tipo: maq.tipo },
+        // RN-14: solicitação de manutenção aberta, em triagem ou com OS não encerrada.
+        manutencaoAberta: manutencao.get(maq.id) ?? 0,
+      };
       if (!turno || !calc) {
         const rodada = rodadasAndamento.find((r) => r.maquinaId === maq.id);
         return {

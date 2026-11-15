@@ -191,16 +191,19 @@ enum TipoParametro {
 // ---------------- Segurança ----------------
 
 model Usuario {
-  id              String   @id @default(uuid()) @db.Uuid
-  nome            String
-  login           String   @unique
-  senhaHash       String   @map("senha_hash")
-  perfis          Perfil[]
-  equipeId        String?  @map("equipe_id") @db.Uuid
-  ativo           Boolean  @default(true)
-  deveTrocarSenha Boolean  @default(false) @map("deve_trocar_senha")
-  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
-  atualizadoEm    DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  id                    String                    @id @default(uuid()) @db.Uuid
+  nome                  String
+  login                 String                    @unique
+  senhaHash             String                    @map("senha_hash")
+  perfis                Perfil[]
+  equipeId              String?                   @map("equipe_id") @db.Uuid
+  ativo                 Boolean                   @default(true)
+  deveTrocarSenha       Boolean                   @default(false) @map("deve_trocar_senha")
+  /// Manutenção: especialidades do técnico e marca de controlador (Fase 6).
+  especialidades        EspecialidadeManutencao[] @default([])
+  controladorManutencao Boolean                   @default(false) @map("controlador_manutencao")
+  criadoEm              DateTime                  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm          DateTime                  @updatedAt @map("atualizado_em") @db.Timestamptz(3)
 
   equipe  Equipe?             @relation(fields: [equipeId], references: [id])
   sessoes SessaoDispositivo[]
@@ -222,6 +225,14 @@ model Usuario {
   recebimentos    Recebimento[]
   impressoes      ImpressaoEtiqueta[]
   loteExportacaos LoteExportacao[]
+
+  solicitacoesManutencao SolicitacaoManutencao[] @relation("SolicitacaoSolicitante")
+  triagensManutencao     SolicitacaoManutencao[] @relation("SolicitacaoTriagem")
+  ordensControladas      OrdemServico[]          @relation("OrdemControlador")
+  ordensEncerradas       OrdemServico[]          @relation("OrdemEncerradaPor")
+  etapasResponsavel      EtapaOrdemServico[]     @relation("EtapaResponsavel")
+  etapasExecutadas       EtapaOrdemServico[]     @relation("EtapaExecutor")
+  modelosSequencia       ModeloSequencia[]
 
   @@map("usuario")
 }
@@ -351,6 +362,8 @@ model Maquina {
   turnos   MaquinaTurno[]
   divisoes DivisaoOp[]
   eventos  Evento[]
+
+  solicitacoesManutencao SolicitacaoManutencao[]
 
   @@map("maquina")
 }
@@ -766,6 +779,8 @@ model Evento {
   etiquetas  Etiqueta[]
   movimentos MovimentoEstoque[]
 
+  solicitacaoManutencao SolicitacaoManutencao?
+
   @@index([turnoId, maquinaId, horaOcorrencia])
   @@index([rodadaId, tipo])
   @@index([divisaoId, tipo])
@@ -1048,4 +1063,137 @@ model ItemExportacao {
 
   @@index([loteId, layout])
   @@map("item_exportacao")
+}
+
+// ---------- Fase 6: manutenção (RN-14) ----------
+
+enum EspecialidadeManutencao {
+  ELETRICA
+  MECANICA
+  HIDRAULICA
+  FERRAMENTARIA
+  SETUP
+  PREDIAL
+}
+
+enum SituacaoSolicitacao {
+  ABERTA
+  EM_TRIAGEM
+  CONVERTIDA
+  RECUSADA
+  ENCERRADA
+}
+
+enum TipoOrdemServico {
+  CORRETIVA
+  PREVENTIVA
+}
+
+enum SituacaoOrdemServico {
+  ABERTA
+  EM_EXECUCAO
+  ENCERRADA
+}
+
+enum SituacaoEtapa {
+  PENDENTE
+  EM_EXECUCAO
+  CONCLUIDA
+  CANCELADA
+}
+
+model SolicitacaoManutencao {
+  id                  String              @id @default(uuid()) @db.Uuid
+  numero              Int                 @unique @default(autoincrement())
+  maquinaId           String?             @map("maquina_id") @db.Uuid
+  /// Local digitado quando não há máquina (ex.: manutenção predial).
+  local               String?
+  /// Parada que gerou a solicitação (automática).
+  eventoParadaId      String?             @unique @map("evento_parada_id") @db.Uuid
+  descricao           String
+  solicitanteId       String              @map("solicitante_id") @db.Uuid
+  situacao            SituacaoSolicitacao @default(ABERTA)
+  /// Hora da ocorrência (da parada) ou do registro manual; início do tempo até o atendimento.
+  ocorridaEm          DateTime            @map("ocorrida_em") @db.Timestamptz(3)
+  criadoEm            DateTime            @default(now()) @map("criado_em") @db.Timestamptz(3)
+  triagemEm           DateTime?           @map("triagem_em") @db.Timestamptz(3)
+  triagemPorId        String?             @map("triagem_por_id") @db.Uuid
+  recusadaEm          DateTime?           @map("recusada_em") @db.Timestamptz(3)
+  justificativaRecusa String?             @map("justificativa_recusa")
+
+  maquina      Maquina?      @relation(fields: [maquinaId], references: [id])
+  eventoParada Evento?       @relation(fields: [eventoParadaId], references: [id])
+  solicitante  Usuario       @relation("SolicitacaoSolicitante", fields: [solicitanteId], references: [id])
+  triagemPor   Usuario?      @relation("SolicitacaoTriagem", fields: [triagemPorId], references: [id])
+  ordemServico OrdemServico?
+
+  @@index([situacao])
+  @@index([maquinaId, situacao])
+  @@map("solicitacao_manutencao")
+}
+
+model OrdemServico {
+  id               String               @id @default(uuid()) @db.Uuid
+  numero           Int                  @unique @default(autoincrement())
+  solicitacaoId    String               @unique @map("solicitacao_id") @db.Uuid
+  tipo             TipoOrdemServico
+  eletiva          Boolean              @default(false)
+  situacao         SituacaoOrdemServico @default(ABERTA)
+  /// Controlador que aprovou e responde pela OS.
+  controladorId    String               @map("controlador_id") @db.Uuid
+  criadoEm         DateTime             @default(now()) @map("criado_em") @db.Timestamptz(3)
+  inicio           DateTime?            @db.Timestamptz(3)
+  fim              DateTime?            @db.Timestamptz(3)
+  servicoExecutado String?              @map("servico_executado")
+  encerradaEm      DateTime?            @map("encerrada_em") @db.Timestamptz(3)
+  encerradaPorId   String?              @map("encerrada_por_id") @db.Uuid
+
+  solicitacao  SolicitacaoManutencao @relation(fields: [solicitacaoId], references: [id])
+  controlador  Usuario               @relation("OrdemControlador", fields: [controladorId], references: [id])
+  encerradaPor Usuario?              @relation("OrdemEncerradaPor", fields: [encerradaPorId], references: [id])
+  etapas       EtapaOrdemServico[]
+
+  @@map("ordem_servico")
+}
+
+model EtapaOrdemServico {
+  id                        String                  @id @default(uuid()) @db.Uuid
+  ordemServicoId            String                  @map("ordem_servico_id") @db.Uuid
+  /// Etapas com a mesma ordem correm em paralelo.
+  ordem                     Int
+  descricao                 String
+  especialidade             EspecialidadeManutencao
+  responsavelId             String?                 @map("responsavel_id") @db.Uuid
+  executorId                String?                 @map("executor_id") @db.Uuid
+  situacao                  SituacaoEtapa           @default(PENDENTE)
+  inicio                    DateTime?               @db.Timestamptz(3)
+  fim                       DateTime?               @db.Timestamptz(3)
+  servicoExecutado          String?                 @map("servico_executado")
+  justificativaCancelamento String?                 @map("justificativa_cancelamento")
+  criadoEm                  DateTime                @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  ordemServico OrdemServico @relation(fields: [ordemServicoId], references: [id])
+  responsavel  Usuario?     @relation("EtapaResponsavel", fields: [responsavelId], references: [id])
+  executor     Usuario?     @relation("EtapaExecutor", fields: [executorId], references: [id])
+
+  @@index([ordemServicoId, ordem])
+  @@index([especialidade, situacao])
+  @@map("etapa_ordem_servico")
+}
+
+/// Sequência de etapas reutilizável (ex.: troca de câmara quente).
+model ModeloSequencia {
+  id           String   @id @default(uuid()) @db.Uuid
+  nome         String   @unique
+  descricao    String?
+  /// [{ ordem, descricao, especialidade }]
+  etapas       Json
+  ativo        Boolean  @default(true)
+  criadoPorId  String   @map("criado_por_id") @db.Uuid
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  criadoPor Usuario @relation(fields: [criadoPorId], references: [id])
+
+  @@map("modelo_sequencia")
 }

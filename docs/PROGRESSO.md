@@ -7,8 +7,49 @@
 | 3 — Etiquetas, matéria-prima e estoque           | Concluída    | 15/11/2026 |
 | 4 — Correções, aprovações, apuração e exportação | Concluída    | 15/11/2026 |
 | 5 — Painéis e indicadores                        | Concluída    | 15/11/2026 |
-| 6 — Manutenção                                   | Não iniciada |            |
+| 6 — Manutenção                                   | Concluída    | 15/11/2026 |
 | 7 — Offline e implantação                        | Não iniciada |            |
+
+## Fase 6 — Manutenção
+
+### O que foi feito
+
+Além do escopo da RN-14, a pedido do usuário a ordem de serviço é feita em **etapas por especialidade** (Elétrica, Mecânica, Hidráulica, Ferramentaria, Setup, Predial), em sequência e com etapas em paralelo, e há um **controlador de manutenção** que aprova e conduz a OS.
+
+**`packages/shared`**: especialidades e situações (solicitação, OS, etapa); regras puras de sequência (liberada/aguardando), de quem executa a etapa, tempo até o atendimento, tempo de reparo e horas por especialidade; esquemas de solicitação, recusa, conversão com etapas, inclusão/ajuste/cancelamento, início/conclusão, encerramento e modelos; permissões `manutencao.ler`, `manutencao.solicitar`, `manutencao.executar`; usuário com especialidades e marca de controlador.
+
+**API**
+
+- Migration `fase6_manutencao`: especialidades e controlador no usuário; solicitação de manutenção, ordem de serviço, etapas da OS e modelos de sequência.
+- Parada com motivo "gera solicitação de manutenção" cria a solicitação na mesma transação do lançamento (descrição com máquina, motivo e observação do apontador).
+- Solicitações (automáticas e manuais, com máquina ou local), triagem, recusa com justificativa e aprovação pelo controlador com a sequência de etapas; inclusão, ajuste e cancelamento de etapas; início e conclusão de etapa pela especialidade responsável quando liberada; encerramento da OS sem lançar nenhum evento; "minhas etapas" do técnico; modelos de sequência; indicadores do módulo.
+- Painel de acompanhamento: aviso de manutenção aberta por máquina, atualizado em tempo real.
+- Dados de exemplo: controlador (`manutencao@`), técnicos `eletrica@`, `mecanica@` (mecânica e hidráulica), `ferramentaria@`, `setup@`, `predial@` e o modelo "Troca de câmara quente".
+
+**Front-end**: cadastro de usuário com especialidades e controlador; tela Manutenção com Minhas etapas (cartões com botões grandes), Solicitações (filtros, avisos de duplicidade e de parada anulada, triagem, recusa, aprovação com editor de etapas e modelos), Ordens de serviço (sequência em colunas por ordem, etapas paralelas empilhadas, iniciar/concluir/cancelar, incluir etapas, encerrar), Modelos de sequência e Indicadores com exportação para Excel; selo "Manutenção aberta" no cartão do painel.
+
+### Critérios de aceite
+
+| Critério                                                                                      | Como foi verificado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Parada com motivo de manutenção cria a solicitação sem ação extra do apontador                | Integração (`manutencao/fase6.test.ts`): parada REF (programada) não cria; parada MEC cria a solicitação aberta ligada à parada, com hora da ocorrência e descrição "INJ-01: MEC — Quebra mecânica — Vazamento na câmara quente". Ponta a ponta (`fase6.spec.ts`): o apontador lança a parada "MOL" no tablet e a solicitação aparece na fila da manutenção.                                                                                                                                                                                                                                                                                                             |
+| A solicitação pode ser recusada com justificativa ou convertida em OS corretiva ou preventiva | Integração: recusa só pelo controlador (técnico 403), justificativa obrigatória (400), segunda decisão 409; conversão em OS corretiva com as 8 etapas do modelo, responsável sem a especialidade recusado (422). Ponta a ponta: o controlador recusa as duplicadas da INJ-01 com justificativa e aprova a nossa com o modelo "Troca de câmara quente" (8 etapas, duas em paralelo na ordem 4).                                                                                                                                                                                                                                                                           |
+| Encerrar a ordem de serviço não reinicia a máquina                                            | Integração: OS encerrada (início 1 h após a parada, reparo 1,9 h) sem nenhum evento novo no turno; o painel continua mostrando a INJ-01 parada; o reinício segue sendo lançado pelo apontador. Ponta a ponta: após encerrar, o cartão continua vermelho (parada).                                                                                                                                                                                                                                                                                                                                                                                                        |
+| O painel de acompanhamento indica máquina com solicitação aberta                              | Integração: `manutencaoAberta` = 1 após a parada e 0 após recusa/encerramento. Ponta a ponta: o selo "Manutenção aberta" aparece no cartão e some quando a OS é encerrada.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Etapas por especialidade, em sequência e em paralelo (pedido do usuário)                      | Unitários: liberação por ordem, paralelas juntas, cancelada conta como finalizada, quem pode executar, tempos e horas por especialidade com valores conhecidos. Integração: etapa não liberada 409, outra especialidade/outro responsável 403, as duas etapas da ordem 4 em execução ao mesmo tempo, a ordem 5 só libera com as duas concluídas, inclusão de etapa antes da sequência recusada, cancelamento com justificativa, encerramento só com tudo finalizado. Ponta a ponta: técnico de setup executa a sua etapa pela tela "Minhas etapas" e a ferramentaria passa a ver a seguinte; o controlador conclui o restante e vê as etapas paralelas liberadas juntas. |
+
+### Resultado das verificações finais
+
+- Migrations sem pendências; aplicadas do zero nos bancos de teste, e2e e Docker.
+- Testes: shared 86/86, API 114/114, agente 4/4, web 3/3, ponta a ponta 21/21 (Fases 1 a 6).
+- Lint sem problemas, Prettier sem diferenças, typecheck sem erros.
+- Docker com volume novo: 4 serviços saudáveis, técnicos, controlador e modelo de sequência carregados.
+
+### Pendências e observações
+
+- Plano de manutenção preventiva por calendário e estoque de peças continuam fora do escopo (seção 2); OS preventiva nasce de uma solicitação.
+- Notificações (e-mail/push) para técnicos quando uma etapa é liberada não foram pedidas; a tela "Minhas etapas" atualiza a cada 30 s.
+- Offline e implantação: **Fase 7**.
 
 ## Fase 5 — Painéis e indicadores
 

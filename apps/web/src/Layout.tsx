@@ -43,6 +43,7 @@ import {
   IconStack2,
   IconFileSpreadsheet,
   IconChecklist,
+  IconTool,
   IconDeviceTv,
   IconChartLine,
   IconFileExport,
@@ -98,6 +99,12 @@ const GRUPOS: { titulo: string; itens: ItemMenu[] }[] = [
         caminho: '/aprovacoes',
         icone: <IconChecklist size={18} />,
         permissao: 'aprovacoes.ler',
+      },
+      {
+        rotulo: 'Manutenção',
+        caminho: '/manutencao',
+        icone: <IconTool size={18} />,
+        permissao: 'manutencao.ler',
       },
       {
         rotulo: 'Apuração e exportação',
@@ -344,7 +351,7 @@ export function Layout() {
           <Group px="sm" mt="xl" gap={4}>
             <IconSettings size={14} color="gray" />
             <Badge variant="outline" color="gray" size="sm">
-              Fase 5
+              Fase 6
             </Badge>
           </Group>
         </ScrollArea>

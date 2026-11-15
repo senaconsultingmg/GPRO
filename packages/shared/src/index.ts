@@ -14,3 +14,5 @@ export * from './layouts-excel.js';
 export * from './etiquetas.js';
 export * from './modelos-zpl.js';
 export * from './esquemas-paineis.js';
+export * from './manutencao.js';
+export * from './esquemas-manutencao.js';

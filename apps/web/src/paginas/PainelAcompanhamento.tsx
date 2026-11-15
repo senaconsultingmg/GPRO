@@ -20,6 +20,7 @@ import {
   IconPlayerPause,
   IconPlayerPlay,
   IconPower,
+  IconTool,
   IconWifi,
   IconWifiOff,
 } from '@tabler/icons-react';
@@ -57,6 +58,7 @@ interface Cartao {
   ops: OpCartao[];
   oee: { oee: number | null; alertaPerformance: boolean } | null;
   cavidadesBloqueadas: number[];
+  manutencaoAberta: number;
 }
 interface Painel {
   geradoEm: string;
@@ -229,6 +231,11 @@ function CartaoMaquina({ c, tv }: { c: Cartao; tv: boolean }) {
         })}
         <Group justify="space-between">
           <Group gap={4}>
+            {c.manutencaoAberta > 0 && (
+              <Badge color="grape" variant="filled" leftSection={<IconTool size={12} />} data-manutencao>
+                Manutenção aberta{c.manutencaoAberta > 1 ? ` (${c.manutencaoAberta})` : ''}
+              </Badge>
+            )}
             {c.cavidadesBloqueadas.length > 0 && (
               <Badge color="orange" variant="light" leftSection={<IconAlertTriangle size={12} />}>
                 Cavidade(s) {c.cavidadesBloqueadas.join(', ')} bloqueada(s)

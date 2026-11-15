@@ -84,7 +84,7 @@ function formatar(v: Valor, c: Coluna) {
 }
 
 /** Tabela do painel com exportação para Excel (seção 10). */
-function TabelaIndicador({
+export function TabelaIndicador({
   titulo,
   colunas,
   linhas,

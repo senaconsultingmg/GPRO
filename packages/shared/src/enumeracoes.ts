@@ -289,3 +289,59 @@ export const ROTULO_TIPO_MOVIMENTO: Record<TipoMovimento, string> = {
   RECEBIMENTO_PRODUTO: 'Recebimento de produto',
   CONSUMO_SEMIACABADO: 'Consumo de semiacabado',
 };
+
+// ---------- Fase 6: manutenção (RN-14) ----------
+export const ESPECIALIDADES_MANUTENCAO = [
+  'ELETRICA',
+  'MECANICA',
+  'HIDRAULICA',
+  'FERRAMENTARIA',
+  'SETUP',
+  'PREDIAL',
+] as const;
+export type EspecialidadeManutencao = (typeof ESPECIALIDADES_MANUTENCAO)[number];
+export const ROTULO_ESPECIALIDADE: Record<EspecialidadeManutencao, string> = {
+  ELETRICA: 'Elétrica',
+  MECANICA: 'Mecânica',
+  HIDRAULICA: 'Hidráulica',
+  FERRAMENTARIA: 'Ferramentaria',
+  SETUP: 'Setup',
+  PREDIAL: 'Predial',
+};
+
+export const SITUACOES_SOLICITACAO = ['ABERTA', 'EM_TRIAGEM', 'CONVERTIDA', 'RECUSADA', 'ENCERRADA'] as const;
+export type SituacaoSolicitacao = (typeof SITUACOES_SOLICITACAO)[number];
+export const ROTULO_SITUACAO_SOLICITACAO: Record<SituacaoSolicitacao, string> = {
+  ABERTA: 'Aberta',
+  EM_TRIAGEM: 'Em triagem',
+  CONVERTIDA: 'Convertida em OS',
+  RECUSADA: 'Recusada',
+  ENCERRADA: 'Encerrada',
+};
+
+export const TIPOS_ORDEM_SERVICO = ['CORRETIVA', 'PREVENTIVA'] as const;
+export type TipoOrdemServico = (typeof TIPOS_ORDEM_SERVICO)[number];
+export const ROTULO_TIPO_ORDEM_SERVICO: Record<TipoOrdemServico, string> = {
+  CORRETIVA: 'Corretiva',
+  PREVENTIVA: 'Preventiva',
+};
+
+export const SITUACOES_ORDEM_SERVICO = ['ABERTA', 'EM_EXECUCAO', 'ENCERRADA'] as const;
+export type SituacaoOrdemServico = (typeof SITUACOES_ORDEM_SERVICO)[number];
+export const ROTULO_SITUACAO_ORDEM_SERVICO: Record<SituacaoOrdemServico, string> = {
+  ABERTA: 'Aberta',
+  EM_EXECUCAO: 'Em execução',
+  ENCERRADA: 'Encerrada',
+};
+
+export const SITUACOES_ETAPA = ['PENDENTE', 'EM_EXECUCAO', 'CONCLUIDA', 'CANCELADA'] as const;
+export type SituacaoEtapa = (typeof SITUACOES_ETAPA)[number];
+/** Rótulos de exibição; "Aguardando" e "Liberada" vêm da regra de sequência (etapa pendente). */
+export const ROTULO_SITUACAO_ETAPA: Record<SituacaoEtapa | 'AGUARDANDO' | 'LIBERADA', string> = {
+  AGUARDANDO: 'Aguardando',
+  LIBERADA: 'Liberada',
+  PENDENTE: 'Pendente',
+  EM_EXECUCAO: 'Em execução',
+  CONCLUIDA: 'Concluída',
+  CANCELADA: 'Cancelada',
+};

@@ -36,6 +36,7 @@ import { PaginaAprovacoes } from './paginas/Aprovacoes';
 import { PaginaApuracao } from './paginas/Apuracao';
 import { PaginaPainelAcompanhamento } from './paginas/PainelAcompanhamento';
 import { PaginaPainelIndicadores } from './paginas/PainelIndicadores';
+import { PaginaManutencao } from './paginas/Manutencao';
 import * as cfg from './cadastros/configuracoes';
 
 dayjs.locale('pt-br');
@@ -235,6 +236,14 @@ function Aplicacao() {
           element={
             <Protegida permissao="exportacao.ler">
               <PaginaApuracao />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/manutencao"
+          element={
+            <Protegida permissao="manutencao.ler">
+              <PaginaManutencao />
             </Protegida>
           }
         />

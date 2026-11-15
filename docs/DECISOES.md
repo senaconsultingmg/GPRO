@@ -250,3 +250,49 @@ Registro das decisões de projeto. "Confirmada" indica decisão respondida pelo 
 - "Produzido na OP" é o total de todos os turnos (mesma fórmula da RN-06); "realizado do turno" é a produção da divisão no turno, comparada com a meta da divisão.
 - A cor nunca é a única informação: cada cartão traz rótulo e ícone da situação.
 - Cores dos gráficos: paleta categórica validada (OEE, Disponibilidade, Performance, Qualidade em ordem fixa); toda série também aparece em tabela.
+
+## Fase 6 — Manutenção (15/11/2026)
+
+### Respostas do usuário às dúvidas do plano (todas confirmadas)
+
+Primeira rodada:
+
+| #   | Dúvida                        | Decisão                                                                                                                                           |
+| --- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Fluxo da solicitação          | Aberta → (opcional) em triagem → recusada (com justificativa) ou convertida em OS → encerrada quando a OS encerra.                                |
+| 2   | Tempo até o atendimento       | Da hora da parada (ou do registro manual) até o início da primeira etapa da OS.                                                                   |
+| 3   | Tempo de reparo               | Do início da primeira etapa ao fim da última; horas reais informadas pela manutenção (padrão: agora), nunca no futuro nem fim antes do início.    |
+| 4   | Descrição                     | Montada automaticamente: máquina + motivo + justificativa/observação digitada na parada.                                                          |
+| 5   | Solicitação manual            | Líder e manutenção podem registrar, com máquina ou com local (predial).                                                                           |
+| 6   | Duas paradas na mesma máquina | Cada parada gera a sua solicitação; a triagem mostra o aviso de outras abertas na mesma máquina.                                                  |
+| 7   | Parada corrigida/anulada      | A solicitação permanece e mostra "parada anulada"; correção de parada não cria solicitação nova.                                                  |
+| 8   | Número da OS                  | Sequencial (OS 000012).                                                                                                                           |
+| 9   | Aviso no painel               | Enquanto houver solicitação aberta, em triagem ou com OS não encerrada.                                                                           |
+| 10  | Indicadores                   | Por máquina/local: solicitações, em aberto, recusadas, viraram OS, tempo até o atendimento e de reparo (média e máximo); horas por especialidade. |
+
+Segunda rodada (pedido do usuário: OS com etapas por especialidade):
+
+| #   | Dúvida                      | Decisão                                                                                                                                                                         |
+| --- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Controlador                 | Usuário do perfil Manutenção com a marca "controlador": triagem, recusa, aprovação (conversão), montagem e alteração das etapas, encerramento.                                  |
+| 2   | Técnicos                    | Usuários do perfil Manutenção com uma ou mais especialidades: Elétrica, Mecânica, Hidráulica, Ferramentaria, Setup, Predial. Só veem e executam etapas das suas especialidades. |
+| 3   | Responsável pela etapa      | Especialidade obrigatória; pessoa opcional. Sem pessoa, qualquer técnico da especialidade assume ao iniciar; com pessoa, só ela (ou o controlador).                             |
+| 4   | Alterar etapas em andamento | Incluir etapas a partir da maior ordem já iniciada; ajustar ou cancelar (com justificativa) só etapas que não começaram.                                                        |
+| 5   | Encerramento                | Só com todas as etapas concluídas ou canceladas (ao menos uma concluída), com resumo do serviço executado.                                                                      |
+| 6   | Tempos                      | Atendimento e reparo pelas etapas; novo indicador de horas trabalhadas por especialidade.                                                                                       |
+| 7   | Modelos de sequência        | Incluídos: o controlador salva e reutiliza sequências (ex.: "Troca de câmara quente", já nos dados de exemplo).                                                                 |
+| 8   | Predial                     | Solicitação manual sem máquina, com local digitado.                                                                                                                             |
+
+### Regras de sequência
+
+- Etapas com a mesma ordem correm em paralelo. Uma etapa pendente só é liberada quando todas as de ordem menor estão concluídas ou canceladas.
+- Situações: aguardando / liberada (exibição de uma etapa pendente), em execução, concluída, cancelada.
+- A OS passa a "em execução" no início da primeira etapa; o início/fim gravados na OS são o primeiro início e o último fim das etapas concluídas.
+- Encerrar a OS não lança nenhum evento: a máquina continua no estado em que está, e o reinício é sempre do apontador.
+
+### Outros pontos
+
+- O responsável escolhido precisa ser usuário ativo do perfil Manutenção e ter a especialidade da etapa (controlador pode tudo).
+- Tecnicos de exemplo: elétrica, mecânica (+ hidráulica), ferramentaria, setup e predial; `manutencao@exemplo.com.br` é o controlador.
+- Toda ação (criação, triagem, recusa, conversão, inclusão/ajuste/cancelamento de etapa, início, conclusão, encerramento, modelo) é auditada.
+- A tela "Minhas etapas" é pensada para tablet: cartões com botões grandes.
