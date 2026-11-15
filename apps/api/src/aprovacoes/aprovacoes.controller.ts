@@ -9,7 +9,9 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
+import { AvisarAlteracao } from '../comum/barramento.js';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   esquemaDecisao,
@@ -24,6 +26,7 @@ import { AprovacoesService } from './aprovacoes.service.js';
 
 @ApiTags('Correções e aprovações')
 @ApiBearerAuth()
+@UseInterceptors(AvisarAlteracao)
 @Controller()
 export class AprovacoesController {
   constructor(@Inject(AprovacoesService) private readonly servico: AprovacoesService) {}

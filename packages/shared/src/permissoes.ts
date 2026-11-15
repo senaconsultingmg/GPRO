@@ -45,6 +45,7 @@ export const PERMISSOES = {
   /** PCP cria qualquer rodada; matéria-prima só rodadas de extrusora (Fase 3). */
   'rodadas.escrever': ['PCP', 'MATERIA_PRIMA'],
   'turnos.ler': TODOS,
+  'paineis.ler': TODOS,
   /** Abrir/fechar turno, ligar máquinas, criar divisões e lançar eventos (somente no próprio turno). */
   'apontamento.lancar': ['APONTADOR'],
   // Fase 3

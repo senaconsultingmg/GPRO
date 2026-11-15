@@ -10,6 +10,7 @@ import 'dayjs/locale/pt-br';
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
+import '@mantine/charts/styles.css';
 import type { Permissao } from '@apontamento/shared';
 import { ProvedorAutenticacao, useAutenticacao } from './autenticacao/ContextoAutenticacao';
 import { Layout } from './Layout';
@@ -33,6 +34,8 @@ import { PaginaMateriaPrima } from './paginas/MateriaPrima';
 import { PaginaLayouts } from './paginas/Layouts';
 import { PaginaAprovacoes } from './paginas/Aprovacoes';
 import { PaginaApuracao } from './paginas/Apuracao';
+import { PaginaPainelAcompanhamento } from './paginas/PainelAcompanhamento';
+import { PaginaPainelIndicadores } from './paginas/PainelIndicadores';
 import * as cfg from './cadastros/configuracoes';
 
 dayjs.locale('pt-br');
@@ -94,8 +97,32 @@ function Aplicacao() {
   if (!usuario) return <PaginaLogin />;
   return (
     <Routes>
+      <Route
+        path="/painel/tv"
+        element={
+          <Protegida permissao="paineis.ler">
+            <PaginaPainelAcompanhamento tv />
+          </Protegida>
+        }
+      />
       <Route element={<Layout />}>
         <Route index element={<PaginaInicio />} />
+        <Route
+          path="/painel"
+          element={
+            <Protegida permissao="paineis.ler">
+              <PaginaPainelAcompanhamento />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/indicadores"
+          element={
+            <Protegida permissao="paineis.ler">
+              <PaginaPainelIndicadores />
+            </Protegida>
+          }
+        />
         {CADASTROS.map(([caminho, config, permissao]) => (
           <Route
             key={caminho}

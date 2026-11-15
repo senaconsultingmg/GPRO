@@ -42,6 +42,11 @@ import { AprovacoesService } from './aprovacoes/aprovacoes.service.js';
 import { AprovacoesController } from './aprovacoes/aprovacoes.controller.js';
 import { ApuracaoService } from './apuracao/apuracao.service.js';
 import { ApuracaoController } from './apuracao/apuracao.controller.js';
+import { Barramento } from './comum/barramento.js';
+import { PainelService } from './painel/painel.service.js';
+import { PainelController } from './painel/painel.controller.js';
+import { IndicadoresService } from './indicadores/indicadores.service.js';
+import { IndicadoresController } from './indicadores/indicadores.controller.js';
 
 @Module({
   imports: [
@@ -70,6 +75,8 @@ import { ApuracaoController } from './apuracao/apuracao.controller.js';
     EstoqueController,
     AprovacoesController,
     ApuracaoController,
+    PainelController,
+    IndicadoresController,
   ],
   providers: [
     PrismaService,
@@ -92,6 +99,9 @@ import { ApuracaoController } from './apuracao/apuracao.controller.js';
     EstoqueService,
     AprovacoesService,
     ApuracaoService,
+    Barramento,
+    PainelService,
+    IndicadoresService,
     { provide: APP_GUARD, useClass: GuardaAcesso },
     { provide: APP_FILTER, useClass: FiltroErros },
   ],

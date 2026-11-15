@@ -137,9 +137,10 @@ export async function requisitar<T>(metodo: string, caminho: string, corpo?: unk
 }
 
 /** Baixa um arquivo da API (ex.: modelo de Excel) e oferece ao navegador. */
-async function baixar(caminho: string, nomeArquivo: string): Promise<void> {
-  let r = await executar('GET', caminho);
-  if (r.status === 401 && (await renovar()) === 'renovado') r = await executar('GET', caminho);
+async function baixar(caminho: string, nomeArquivo: string, corpo?: unknown): Promise<void> {
+  const metodo = corpo === undefined ? 'GET' : 'POST';
+  let r = await executar(metodo, caminho, corpo);
+  if (r.status === 401 && (await renovar()) === 'renovado') r = await executar(metodo, caminho, corpo);
   if (!r.ok) {
     const dados = await r.json().catch(() => ({}));
     throw new ErroApi(r.status, dados?.mensagem ?? `Erro ${r.status}`);
@@ -150,6 +151,49 @@ async function baixar(caminho: string, nomeArquivo: string): Promise<void> {
   a.download = nomeArquivo;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Lê um fluxo Server-Sent Events autenticado (o token vai no cabeçalho, não na URL).
+ * Resolve quando o fluxo termina ou cai; quem chama decide reconectar.
+ */
+export async function lerFluxo(
+  caminho: string,
+  aoEvento: (tipo: string, dados: unknown) => void,
+  sinal: AbortSignal,
+): Promise<void> {
+  const abrir = () =>
+    fetch(`${BASE}${caminho}`, {
+      headers: { authorization: `Bearer ${tokens.acesso() ?? ''}`, accept: 'text/event-stream' },
+      signal: sinal,
+    });
+  let r = await abrir();
+  if (r.status === 401 && (await renovar()) === 'renovado') r = await abrir();
+  if (!r.ok || !r.body) throw new ErroApi(r.status, `Erro ${r.status}`);
+  const leitor = r.body.getReader();
+  const decodificador = new TextDecoder();
+  let resto = '';
+  for (;;) {
+    const { value, done } = await leitor.read();
+    if (done) return;
+    resto += decodificador.decode(value, { stream: true });
+    const blocos = resto.split('\n\n');
+    resto = blocos.pop() ?? '';
+    for (const bloco of blocos) {
+      let tipo = 'message';
+      const dados: string[] = [];
+      for (const linha of bloco.split('\n')) {
+        if (linha.startsWith('event:')) tipo = linha.slice(6).trim();
+        else if (linha.startsWith('data:')) dados.push(linha.slice(5).trim());
+      }
+      if (!dados.length) continue;
+      try {
+        aoEvento(tipo, JSON.parse(dados.join('\n')));
+      } catch {
+        aoEvento(tipo, dados.join('\n'));
+      }
+    }
+  }
 }
 
 export const api = {

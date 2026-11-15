@@ -11,84 +11,146 @@ import {
   type EventoTempo,
   type Intervalo,
 } from '@apontamento/shared';
+import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { naoEncontrado } from '../comum/erros.js';
-import type { Evento } from '../generated/prisma/client.js';
+import type { Evento, MotivoParada, TipoPerda } from '../generated/prisma/client.js';
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const minutos = (ms: number) => Math.round((ms / 60_000) * 10) / 10;
+
+const INCLUIR_TURNO = {
+  apontador: { select: { nome: true, login: true } },
+  horarioTurno: true,
+  equipe: { select: { letra: true } },
+  maquinas: {
+    include: {
+      maquina: true,
+      rodada: {
+        include: {
+          molde: { select: { id: true, codigo: true } },
+          ops: {
+            include: {
+              ordem: {
+                include: {
+                  produto: { select: { id: true, codigo: true, descricao: true, unidade: true } },
+                },
+              },
+              fichaTecnica: { include: { composicao: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { maquina: { codigo: 'asc' } },
+  },
+  divisoes: true,
+} satisfies Prisma.TurnoApontamentoInclude;
+type TurnoCarregado = Prisma.TurnoApontamentoGetPayload<{ include: typeof INCLUIR_TURNO }>;
+interface Apoio {
+  motivo: Map<string, MotivoParada>;
+  tipoPerda: Map<string, TipoPerda>;
+  material: Map<string, { id: string; codigo: string; descricao: string }>;
+}
+export type Calculo = ReturnType<RelatorioService['montar']>;
+export type MaquinaCalculada = Calculo['maquinas'][number];
 
 /** Relatório do turno (RN-13): por máquina e OP, produção, meta, perdas, consumo, paradas, cavidades, OEE, PH e pendências. */
 @Injectable()
 export class RelatorioService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
+  /** Relatório de um turno, com as pendências em aberto. */
   async gerar(turnoId: string) {
-    const turno = await this.prisma.turnoApontamento.findUnique({
-      where: { id: turnoId },
-      include: {
-        apontador: { select: { nome: true, login: true } },
-        horarioTurno: true,
-        equipe: { select: { letra: true } },
-        maquinas: {
-          include: {
-            maquina: true,
-            rodada: {
-              include: {
-                molde: { select: { codigo: true } },
-                ops: {
-                  include: {
-                    ordem: {
-                      include: {
-                        produto: { select: { id: true, codigo: true, descricao: true, unidade: true } },
-                      },
-                    },
-                    fichaTecnica: { include: { composicao: true } },
-                  },
-                },
-              },
-            },
-          },
-          orderBy: { maquina: { codigo: 'asc' } },
-        },
-        divisoes: true,
-      },
+    const calc = (await this.calcularTurnos([turnoId])).get(turnoId);
+    if (!calc) throw naoEncontrado('Turno');
+    const pendencias = await this.prisma.aprovacao.findMany({
+      where: { turnoId, situacao: 'PENDENTE' },
+      orderBy: { criadoEm: 'asc' },
     });
-    if (!turno) throw naoEncontrado('Turno');
-    const agora = new Date();
-    const fimPadrao = (turno.fechadoEm ?? agora).getTime();
-    const janela: Intervalo = {
-      inicio: Math.min(turno.inicioNominal.getTime(), turno.abertoEm.getTime()),
-      fim: fimPadrao,
-    };
+    return { ...calc, pendencias };
+  }
 
+  /**
+   * Calcula vários turnos de uma vez (consultas em lote): base do relatório, do painel de
+   * acompanhamento e do painel de indicadores — as mesmas fórmulas em todos (seção 10).
+   */
+  async calcularTurnos(ids: string[]) {
+    const r = new Map<string, Calculo>();
+    if (!ids.length) return r;
+    const turnos = await this.prisma.turnoApontamento.findMany({
+      where: { id: { in: ids } },
+      include: INCLUIR_TURNO,
+    });
     const todos = await this.prisma.evento.findMany({
-      where: { turnoId },
+      where: { turnoId: { in: ids } },
       orderBy: { horaOcorrencia: 'asc' },
     });
-    const validos = todos.filter((e) => e.situacao !== 'INCORRETO');
-    const rodadaIds = turno.maquinas.map((m) => m.rodadaId);
-    const eventosCavidade = await this.prisma.evento.findMany({
-      where: {
-        rodadaId: { in: rodadaIds },
-        tipo: { in: ['BLOQUEIO_CAVIDADE', 'DESBLOQUEIO_CAVIDADE'] },
-        situacao: { not: 'INCORRETO' },
-        horaOcorrencia: { lte: new Date(fimPadrao) },
-      },
-    });
-    const divisaoIds = turno.divisoes.map((d) => d.id);
-    const transferenciasRecebidas = (
-      await this.prisma.evento.findMany({ where: { tipo: 'TRANSFERENCIA', situacao: { not: 'INCORRETO' } } })
-    ).filter((e) => divisaoIds.includes((e.dados as { divisaoDestinoId: string }).divisaoDestinoId));
-
+    const rodadaIds = [...new Set(turnos.flatMap((t) => t.maquinas.map((m) => m.rodadaId)))];
+    const eventosCavidade = rodadaIds.length
+      ? await this.prisma.evento.findMany({
+          where: {
+            rodadaId: { in: rodadaIds },
+            tipo: { in: ['BLOQUEIO_CAVIDADE', 'DESBLOQUEIO_CAVIDADE'] },
+            situacao: { not: 'INCORRETO' },
+          },
+        })
+      : [];
+    const divisaoIds = turnos.flatMap((t) => t.divisoes.map((d) => d.id));
+    const idsTransf = divisaoIds.length
+      ? await this.prisma.$queryRaw<{ id: string }[]>`
+          SELECT id FROM evento WHERE tipo = 'TRANSFERENCIA' AND situacao <> 'INCORRETO'
+            AND dados->>'divisaoDestinoId' IN (${Prisma.join(divisaoIds)})`
+      : [];
+    const transferencias = idsTransf.length
+      ? await this.prisma.evento.findMany({ where: { id: { in: idsTransf.map((x) => x.id) } } })
+      : [];
     const [motivos, tiposPerda, materiais] = await Promise.all([
       this.prisma.motivoParada.findMany(),
       this.prisma.tipoPerda.findMany(),
       this.prisma.produto.findMany({ select: { id: true, codigo: true, descricao: true } }),
     ]);
-    const motivo = new Map(motivos.map((m) => [m.id, m]));
-    const tipoPerda = new Map(tiposPerda.map((t) => [t.id, t]));
-    const material = new Map(materiais.map((m) => [m.id, m]));
+    const apoio: Apoio = {
+      motivo: new Map(motivos.map((m) => [m.id, m])),
+      tipoPerda: new Map(tiposPerda.map((t) => [t.id, t])),
+      material: new Map(materiais.map((m) => [m.id, m])),
+    };
+    const agora = new Date();
+    for (const turno of turnos) {
+      r.set(
+        turno.id,
+        this.montar(
+          turno,
+          todos.filter((e) => e.turnoId === turno.id),
+          eventosCavidade,
+          transferencias,
+          apoio,
+          agora,
+        ),
+      );
+    }
+    return r;
+  }
+
+  private montar(
+    turno: TurnoCarregado,
+    todos: Evento[],
+    todosCavidade: Evento[],
+    todasTransferencias: Evento[],
+    { motivo, tipoPerda, material }: Apoio,
+    agora: Date,
+  ) {
+    const fimPadrao = (turno.fechadoEm ?? agora).getTime();
+    const janela: Intervalo = {
+      inicio: Math.min(turno.inicioNominal.getTime(), turno.abertoEm.getTime()),
+      fim: fimPadrao,
+    };
+    const validos = todos.filter((e) => e.situacao !== 'INCORRETO');
+    const eventosCavidade = todosCavidade.filter((e) => e.horaOcorrencia.getTime() <= fimPadrao);
+    const divisaoIds = turno.divisoes.map((d) => d.id);
+    const transferenciasRecebidas = todasTransferencias.filter((e) =>
+      divisaoIds.includes((e.dados as { divisaoDestinoId: string }).divisaoDestinoId),
+    );
 
     const maquinas = turno.maquinas.map((mt) => {
       const ev = validos.filter((e) => e.maquinaId === mt.maquinaId);
@@ -292,9 +354,17 @@ export class RelatorioService {
           descricao: mt.maquina.descricao,
           tipo: mt.maquina.tipo,
         },
-        rodada: { id: mt.rodada.id, numero: mt.rodada.numero, molde: mt.rodada.molde?.codigo ?? null },
+        rodada: {
+          id: mt.rodada.id,
+          numero: mt.rodada.numero,
+          molde: mt.rodada.molde?.codigo ?? null,
+          moldeId: mt.rodada.molde?.id ?? null,
+        },
         segueRodando: mt.segueRodando,
         tempos: {
+          ligadoMs: tempos.ligadoMs,
+          planejadoMs: tempos.planejadoMs,
+          produzindoMs: tempos.produzindoMs,
           ligadoMin: minutos(tempos.ligadoMs),
           paradasProgramadasMin: minutos(tempos.paradasProgramadasMs),
           paradasNaoProgramadasMin: minutos(tempos.paradasNaoProgramadasMs),
@@ -305,7 +375,9 @@ export class RelatorioService {
           motivo: p.motivoId
             ? `${motivo.get(p.motivoId)?.codigo} — ${motivo.get(p.motivoId)?.descricao}`
             : '?',
+          motivoId: p.motivoId ?? null,
           programada: p.programada,
+          duracaoMs: p.fim - p.inicio,
           inicio: new Date(p.inicio),
           fim: new Date(p.fim),
           minutos: minutos(p.fim - p.inicio),
@@ -326,14 +398,12 @@ export class RelatorioService {
       };
     });
 
-    const pendencias = await this.prisma.aprovacao.findMany({
-      where: { turnoId, situacao: 'PENDENTE' },
-      orderBy: { criadoEm: 'asc' },
-    });
     return {
       turno: {
         id: turno.id,
         data: turno.data.toISOString().slice(0, 10),
+        horarioTurnoId: turno.horarioTurnoId,
+        equipeId: turno.equipeId,
         horario: {
           nome: turno.horarioTurno.nome,
           horaInicio: turno.horarioTurno.horaInicio,
@@ -346,7 +416,6 @@ export class RelatorioService {
         fechadoEm: turno.fechadoEm,
       },
       maquinas,
-      pendencias,
       lancamentosMarcados: todos.filter((e) => e.marcaHorario !== 'NO_MOMENTO').length,
       totalLancamentos: todos.length,
       geradoEm: agora,

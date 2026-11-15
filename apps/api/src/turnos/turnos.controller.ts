@@ -10,7 +10,9 @@ import {
   Post,
   Put,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
+import { AvisarAlteracao } from '../comum/barramento.js';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   esquemaAbrirTurno,
@@ -32,6 +34,7 @@ const disp = (d?: string) => (d || 'desconhecido').slice(0, 100);
 
 @ApiTags('Turnos e apontamento')
 @ApiBearerAuth()
+@UseInterceptors(AvisarAlteracao)
 @Controller('turnos')
 export class TurnosController {
   constructor(

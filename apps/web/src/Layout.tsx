@@ -43,6 +43,8 @@ import {
   IconStack2,
   IconFileSpreadsheet,
   IconChecklist,
+  IconDeviceTv,
+  IconChartLine,
   IconFileExport,
 } from '@tabler/icons-react';
 import { Link, Outlet, useLocation } from 'react-router';
@@ -59,6 +61,23 @@ interface ItemMenu {
 
 const GRUPOS: { titulo: string; itens: ItemMenu[] }[] = [
   { titulo: '', itens: [{ rotulo: 'Início', caminho: '/', icone: <IconHome size={18} /> }] },
+  {
+    titulo: 'Painéis',
+    itens: [
+      {
+        rotulo: 'Acompanhamento',
+        caminho: '/painel',
+        icone: <IconDeviceTv size={18} />,
+        permissao: 'paineis.ler',
+      },
+      {
+        rotulo: 'Indicadores',
+        caminho: '/indicadores',
+        icone: <IconChartLine size={18} />,
+        permissao: 'paineis.ler',
+      },
+    ],
+  },
   {
     titulo: 'Apontamento',
     itens: [
@@ -325,7 +344,7 @@ export function Layout() {
           <Group px="sm" mt="xl" gap={4}>
             <IconSettings size={14} color="gray" />
             <Badge variant="outline" color="gray" size="sm">
-              Fase 4
+              Fase 5
             </Badge>
           </Group>
         </ScrollArea>

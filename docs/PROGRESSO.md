@@ -6,9 +6,47 @@
 | 2 — OPs, rodadas e apontamento                   | Concluída    | 15/11/2026 |
 | 3 — Etiquetas, matéria-prima e estoque           | Concluída    | 15/11/2026 |
 | 4 — Correções, aprovações, apuração e exportação | Concluída    | 15/11/2026 |
-| 5 — Painéis e indicadores                        | Não iniciada |            |
+| 5 — Painéis e indicadores                        | Concluída    | 15/11/2026 |
 | 6 — Manutenção                                   | Não iniciada |            |
 | 7 — Offline e implantação                        | Não iniciada |            |
+
+## Fase 5 — Painéis e indicadores
+
+### O que foi feito
+
+**`packages/shared`**: soma de fatos por período e grupo (`agregarFatos`, `agregarPor`), sempre somando tempos e quantidades antes de dividir; granularidade automática da evolução (dia até 62 dias, mês acima); esquemas dos filtros e da exportação de tabela; permissão `paineis.ler` (todos os perfis).
+
+**API**
+
+- O cálculo do relatório do turno virou um cálculo em lote (`calcularTurnos`), usado pelo relatório, pelo painel e pelos indicadores: as mesmas fórmulas em todos.
+- Aviso interno de alteração (lançamento, abertura, divisão, fechamento, correção aprovada), que alimenta o tempo real e limpa o cache dos indicadores.
+- `GET /painel/acompanhamento` (cartão por máquina) e `GET /painel/fluxo` (Server-Sent Events, autenticado pelo cabeçalho, com pulso a cada 25 s).
+- `GET /indicadores` com filtros de período, máquina, tipo de máquina, molde, produto, horário de turno e equipe; `POST /indicadores/exportar` gera o .xlsx de qualquer tabela.
+- nginx: rota do fluxo sem buffer e com conexão longa.
+
+**Front-end**: Painel de acompanhamento (verde/vermelho/cinza com rótulo e ícone, OPs com os dois números, demanda, produzido e %, meta × realizado do turno, OEE, PH real × padrão, cavidades bloqueadas, motivo e tempo parado em contagem, indicador "Ao vivo", modo TV em tela cheia sem menu); Painel de indicadores (filtros, atalhos Hoje/Mês/Ano, OEE por tipo de unidade, gráficos de OEE por máquina e de evolução, tabelas de OEE, evolução, produção, PH, paradas, perdas, consumo e comparação entre equipes e horários, cada uma com botão Excel).
+
+### Critérios de aceite
+
+| Critério                                                                                                                                       | Como foi verificado                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Testes com valores conhecidos conferem Disponibilidade, Performance, Qualidade, OEE e PH, incluindo rodada com várias OPs e cavidade bloqueada | Unitários (`indicadores.test.ts`): rodada de 3 OPs em molde de 4 cavidades com a cavidade 2 bloqueada por 3 h → esperada 960 + 570 + 570 = 2100; Disponibilidade 9,5/11, Performance 1960/2100, Qualidade 1930/1960, OEE = produto dos três, PH real 96,84; extrusora em kg/h. Integração (`fase5.test.ts`): turno real com 12 h ligado e 1 h de parada programada → 12/11/11 h, Disponibilidade 100%, Performance = peças ÷ (11 × PH da ficha). |
+| Ao lançar uma parada, o cartão da máquina fica vermelho com motivo e tempo em contagem, sem recarregar a página                                | Integração: o fluxo SSE entrega `event: alteracao` com o turno; o painel mostra PARADA com motivo, hora de início e equipe. Ponta a ponta (`fase5.spec.ts`): um navegador no painel e outro no tablet; a parada lançada no tablet deixa o cartão vermelho com "MEC — Quebra mecânica" e o cronômetro andando, sem navegação da página; o reinício volta a verde. Também conferido o fluxo através do nginx no Docker.                            |
+| O OEE do mês é calculado sobre tempos e quantidades somados, não como média dos dias                                                           | Unitário: dia de 100% + dia de 25% → mês 92,9% × 96,2% (≈ 89,3%), não 62,5%. Integração: dois turnos de outubro → mês com 14/13/12 h e OEE igual ao da soma dos fatos, diferente da média dos dois pontos diários; por mês, um ponto só com o mesmo valor.                                                                                                                                                                                       |
+| Filtros por equipe e por horário de turno funcionam; tabelas exportam para Excel                                                               | Integração: filtro da equipe B e do horário Noite trazem só o turno correspondente; comparação entre equipes A e B e entre horários Dia e Noite; .xlsx com cabeçalhos e formato de percentual. Ponta a ponta: filtrar por equipe e por horário deixa só as linhas daquele valor; o botão Excel baixa `oee-por-maquina.xlsx` (arquivo .xlsx válido).                                                                                              |
+
+### Resultado das verificações finais
+
+- Migrations: nenhuma nova nesta fase; banco atualizado.
+- Testes: shared 76/76, API 107/107, agente 4/4, web 3/3, ponta a ponta 17/17 (Fases 1 a 5).
+- Lint sem problemas, Prettier sem diferenças, typecheck sem erros.
+- Docker: 4 serviços saudáveis; painel, indicadores e fluxo em tempo real respondendo pela web (nginx). Telas conferidas por captura.
+
+### Pendências e observações
+
+- Indicação de solicitação de manutenção aberta no cartão: **Fase 6**.
+- Os indicadores são calculados na hora a partir dos eventos, com cache em memória dos turnos não abertos. Se ficar lento com anos de dados, criar consolidação em tabela sem mudar as fórmulas.
+- O cache e o tempo real são por processo da API; com mais de uma instância da API seria preciso um barramento compartilhado (ex.: notificações do PostgreSQL).
 
 ## Fase 4 — Correções, aprovações, apuração e exportação
 

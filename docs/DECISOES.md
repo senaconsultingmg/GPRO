@@ -220,3 +220,33 @@ Registro das decisões de projeto. "Confirmada" indica decisão respondida pelo 
 ### Estorno de recebimento
 
 - Estoque (etiqueta de produto) e matéria-prima (devolução/extrusão), com motivo obrigatório. O recebimento fica marcado como estornado (data, usuário, motivo), o saldo é revertido (`ESTORNO_RECEBIMENTO`) e a etiqueta volta a EMITIDA. Recusado para etiqueta exportada ou para lote cujo saldo no local já foi usado.
+
+## Fase 5 — Painéis e indicadores (15/11/2026)
+
+### Respostas do usuário às dúvidas do plano (todas confirmadas)
+
+| #   | Dúvida                      | Decisão                                                                                                                                                    |
+| --- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Filtro por produto ou molde | Seleciona as máquinas-turno cuja rodada tem o produto/molde; o OEE é da rodada inteira (P1); produção, PH, perdas e consumo mostram só o produto filtrado. |
+| 2   | Data de referência          | A data do turno (turno noturno conta no dia em que começou).                                                                                               |
+| 3   | Turnos abertos              | Entram com o valor parcial até agora, marcados como parciais.                                                                                              |
+| 4   | Evolução no tempo           | Um ponto por dia até 62 dias, por mês acima; chave "Por dia / Por mês" para trocar. Cada ponto soma tempos e quantidades.                                  |
+| 5   | "Por tipo de peça"          | Por produto. Peças e kg nunca se somam.                                                                                                                    |
+| 6   | Painel na TV                | Login normal e modo tela cheia (`/painel/tv`), sem menu; a sessão é renovada sozinha.                                                                      |
+| 7   | Tempo real                  | Server-Sent Events lidos com `fetch` (token no cabeçalho). Se cair, consulta a cada 30 s e reconecta.                                                      |
+| 8   | Cálculo                     | Na hora, a partir dos eventos, com cache em memória dos turnos não abertos (limpo a cada alteração do turno).                                              |
+
+### Fórmulas e agregação
+
+- Uma máquina-turno é um fato: tempo ligado, planejado e produzindo; produção esperada, boas e refugadas somadas das OPs da rodada. O OEE da rodada é o da máquina.
+- Grupos (máquina, período, equipe, horário) somam os fatos e só então dividem. Seleções com injetoras/sopradoras e extrusoras mostram OEE separado por unidade (peças e kg), nunca um OEE misturado.
+- PH real por máquina + molde + produto + versão da ficha = produção total do produto ÷ horas produzindo das máquinas-turno em que ele rodou; "real ÷ padrão" usa o PH da ficha daquela versão.
+- Perdas: percentual em kg sobre o consumo líquido de material; percentual em peças sobre a produção total em peças.
+- Paradas por motivo: tempo dentro do período ligado, em ordem decrescente, separadas em programadas e não programadas.
+
+### Painel de acompanhamento
+
+- Máquina em turno aberto: estado pelos eventos válidos (produzindo, parada com motivo e início, desligada). Máquina fora de turno aberto aparece desligada, com as OPs da rodada em andamento.
+- "Produzido na OP" é o total de todos os turnos (mesma fórmula da RN-06); "realizado do turno" é a produção da divisão no turno, comparada com a meta da divisão.
+- A cor nunca é a única informação: cada cartão traz rótulo e ícone da situação.
+- Cores dos gráficos: paleta categórica validada (OEE, Disponibilidade, Performance, Qualidade em ordem fixa); toda série também aparece em tabela.

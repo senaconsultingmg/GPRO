@@ -301,3 +301,75 @@ export function consumoTeorico(
       ) / 1000,
   }));
 }
+
+/** Fato de uma máquina em um turno (ou de uma OP), base dos painéis (seção 10). */
+export interface FatoProducao {
+  ligadoMs: number;
+  planejadoMs: number;
+  produzindoMs: number;
+  producaoEsperada: number;
+  boas: number;
+  refugadas: number;
+}
+
+export interface Agregado extends FatoProducao, Oee {
+  producaoTotal: number;
+  /** PH real = produção total ÷ horas produzindo. */
+  phReal: number | null;
+  /** Quantidade de fatos somados. */
+  n: number;
+}
+
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/**
+ * Seção 10 — para períodos (dia, mês, ano) e grupos de máquinas: soma tempos e quantidades
+ * e só depois divide. Nunca faz média de percentuais. Os fatos devem ter a mesma unidade
+ * (peças ou kg): não misture injetoras/sopradoras com extrusoras no mesmo agregado.
+ */
+export function agregarFatos(fatos: FatoProducao[]): Agregado {
+  const soma = fatos.reduce<FatoProducao>(
+    (s, f) => ({
+      ligadoMs: s.ligadoMs + f.ligadoMs,
+      planejadoMs: s.planejadoMs + f.planejadoMs,
+      produzindoMs: s.produzindoMs + f.produzindoMs,
+      producaoEsperada: s.producaoEsperada + f.producaoEsperada,
+      boas: s.boas + f.boas,
+      refugadas: s.refugadas + f.refugadas,
+    }),
+    { ligadoMs: 0, planejadoMs: 0, produzindoMs: 0, producaoEsperada: 0, boas: 0, refugadas: 0 },
+  );
+  const arred = {
+    ...soma,
+    producaoEsperada: r3(soma.producaoEsperada),
+    boas: r3(soma.boas),
+    refugadas: r3(soma.refugadas),
+  };
+  const producaoTotal = r3(arred.boas + arred.refugadas);
+  return {
+    ...arred,
+    ...calcularOee(arred),
+    producaoTotal,
+    phReal: calcularPhReal(producaoTotal, arred.produzindoMs),
+    n: fatos.length,
+  };
+}
+
+/** Agrupa por uma chave e agrega cada grupo (somando antes de dividir). */
+export function agregarPor<T extends FatoProducao>(
+  fatos: T[],
+  chave: (f: T) => string,
+): Map<string, Agregado & { itens: T[] }> {
+  const grupos = new Map<string, T[]>();
+  for (const f of fatos) {
+    const k = chave(f);
+    grupos.set(k, [...(grupos.get(k) ?? []), f]);
+  }
+  return new Map([...grupos].map(([k, itens]) => [k, { ...agregarFatos(itens), itens }]));
+}
+
+/** Granularidade automática da evolução no tempo: por dia até 62 dias, por mês acima. */
+export function granularidadePadrao(inicio: string, fim: string): 'DIA' | 'MES' {
+  const dias = (Date.parse(`${fim}T00:00:00Z`) - Date.parse(`${inicio}T00:00:00Z`)) / 86_400_000 + 1;
+  return dias <= 62 ? 'DIA' : 'MES';
+}
