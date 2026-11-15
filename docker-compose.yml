@@ -1,0 +1,51 @@
+# Sobe o sistema completo: banco, API e front-end.
+# Funciona sem configuração, mas antes de usar em produção copie .env.example para .env
+# e troque as senhas e o segredo. O agente de impressão entra na Fase 3.
+name: apontamento
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-apontamento}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apontamento}
+      POSTGRES_DB: ${POSTGRES_DB:-apontamento}
+      TZ: UTC
+    volumes:
+      - dados-banco:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-apontamento}:${POSTGRES_PASSWORD:-apontamento}@db:5432/${POSTGRES_DB:-apontamento}
+      JWT_SEGREDO: ${JWT_SEGREDO:-troque-este-segredo-no-arquivo-env}
+      JWT_ACESSO_MINUTOS: ${JWT_ACESSO_MINUTOS:-15}
+      RENOVACAO_DIAS: ${RENOVACAO_DIAS:-30}
+      CARREGAR_DADOS_EXEMPLO: ${CARREGAR_DADOS_EXEMPLO:-true}
+      TZ: UTC
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - '${PORTA_WEB:-8080}:80'
+
+volumes:
+  dados-banco:

@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/.env
+**/test-results
+**/playwright-report
+apps/api/src/generated
+.git

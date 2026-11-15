@@ -1,0 +1,437 @@
+// Modelo de dados — Fase 1: autenticação, auditoria, parâmetros e cadastros (seção 6).
+// As tabelas de produção, estoque e manutenção entram nas fases seguintes.
+// Todas as datas/horas (timestamptz) são gravadas em UTC.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Perfil {
+  SUPERUSUARIO
+  PCP
+  APONTADOR
+  LIDER
+  ESTOQUE
+  MATERIA_PRIMA
+  MANUTENCAO
+}
+
+enum TipoMaquina {
+  INJETORA
+  SOPRADORA
+  EXTRUSORA
+}
+
+enum TipoProduto {
+  ACABADO
+  SEMIACABADO
+  MATERIA_PRIMA
+  ADITIVO
+  EXTRUSADO
+  MOIDO
+  RECICLADO
+  MISTURA
+}
+
+enum Unidade {
+  PECA
+  KG
+}
+
+enum TipoEmbalagem {
+  PALLET
+  SACO
+  GAIOLA
+  CAIXOTE
+  PILHA
+  OUTRO
+}
+
+enum SituacaoFicha {
+  RASCUNHO
+  VIGENTE
+  OBSOLETA
+}
+
+enum TipoLocalEstoque {
+  PRODUTO_ACABADO
+  MATERIA_PRIMA
+}
+
+enum ModalidadeTurno {
+  CENTRAL
+  REVEZAMENTO
+}
+
+enum TipoEtiqueta {
+  PRODUTO
+  EXTRUSAO
+  MISTURA
+  ENTRADA_MATERIA_PRIMA
+  PERDA
+  DEVOLUCAO_TRANSFERENCIA
+}
+
+enum TipoParametro {
+  INTEIRO
+  DECIMAL
+  TEXTO
+  BOOLEANO
+  LISTA
+}
+
+// ---------------- Segurança ----------------
+
+model Usuario {
+  id              String   @id @default(uuid()) @db.Uuid
+  nome            String
+  login           String   @unique
+  senhaHash       String   @map("senha_hash")
+  perfis          Perfil[]
+  equipeId        String?  @map("equipe_id") @db.Uuid
+  ativo           Boolean  @default(true)
+  deveTrocarSenha Boolean  @default(false) @map("deve_trocar_senha")
+  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  equipe  Equipe?            @relation(fields: [equipeId], references: [id])
+  sessoes SessaoDispositivo[]
+
+  fichasCriadas  FichaTecnica[] @relation("FichaCriadaPor")
+  fichasAprovadas FichaTecnica[] @relation("FichaAprovadaPor")
+
+  @@map("usuario")
+}
+
+/// Sessão por dispositivo: guarda o token de renovação (somente o hash).
+model SessaoDispositivo {
+  id                 String    @id @default(uuid()) @db.Uuid
+  usuarioId          String    @map("usuario_id") @db.Uuid
+  dispositivo        String
+  tokenRenovacaoHash String    @unique @map("token_renovacao_hash")
+  criadoEm           DateTime  @default(now()) @map("criado_em") @db.Timestamptz(3)
+  ultimoUsoEm        DateTime  @default(now()) @map("ultimo_uso_em") @db.Timestamptz(3)
+  expiraEm           DateTime  @map("expira_em") @db.Timestamptz(3)
+  revogadaEm         DateTime? @map("revogada_em") @db.Timestamptz(3)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId, dispositivo])
+  @@map("sessao_dispositivo")
+}
+
+model RegistroAuditoria {
+  id            BigInt   @id @default(autoincrement())
+  usuarioId     String?  @map("usuario_id") @db.Uuid
+  usuarioLogin  String?  @map("usuario_login")
+  dataHora      DateTime @default(now()) @map("data_hora") @db.Timestamptz(3)
+  entidade      String
+  entidadeId    String?  @map("entidade_id")
+  acao          String
+  valorAnterior Json?    @map("valor_anterior")
+  valorNovo     Json?    @map("valor_novo")
+
+  @@index([entidade, entidadeId])
+  @@index([dataHora])
+  @@map("registro_auditoria")
+}
+
+model ParametroSistema {
+  chave          String        @id
+  valor          String
+  tipo           TipoParametro
+  opcoes         String[]
+  descricao      String
+  atualizadoEm   DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  atualizadoPorId String?      @map("atualizado_por_id") @db.Uuid
+
+  @@map("parametro_sistema")
+}
+
+// ---------------- Turnos e escala ----------------
+
+model HorarioTurno {
+  id         String          @id @default(uuid()) @db.Uuid
+  nome       String          @unique
+  modalidade ModalidadeTurno
+  /// Hora local (America/Sao_Paulo) no formato HH:MM.
+  horaInicio String          @map("hora_inicio")
+  horaFim    String          @map("hora_fim")
+  /// 0 = domingo ... 6 = sábado.
+  diasSemana Int[]           @map("dias_semana")
+  ativo      Boolean         @default(true)
+  criadoEm   DateTime        @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  escalas Escala[]
+
+  @@map("horario_turno")
+}
+
+model Equipe {
+  id        String   @id @default(uuid()) @db.Uuid
+  letra     String   @unique
+  descricao String?
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  usuarios Usuario[]
+  escalas  Escala[]
+
+  @@map("equipe")
+}
+
+model Escala {
+  id             String   @id @default(uuid()) @db.Uuid
+  /// Data civil do início do turno (turno da noite pertence à data em que começa).
+  data           DateTime @db.Date
+  horarioTurnoId String   @map("horario_turno_id") @db.Uuid
+  equipeId       String   @map("equipe_id") @db.Uuid
+  criadoEm       DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  horarioTurno HorarioTurno @relation(fields: [horarioTurnoId], references: [id])
+  equipe       Equipe       @relation(fields: [equipeId], references: [id])
+
+  @@unique([data, horarioTurnoId])
+  @@map("escala")
+}
+
+// ---------------- Máquinas, moldes e produtos ----------------
+
+model Maquina {
+  id                           String      @id @default(uuid()) @db.Uuid
+  codigo                       String      @unique
+  descricao                    String
+  tipo                         TipoMaquina
+  ativa                        Boolean     @default(true)
+  forcaFechamentoT             Float?      @map("forca_fechamento_t")
+  distanciaColunasHorizontalMm Float?      @map("distancia_colunas_horizontal_mm")
+  distanciaColunasVerticalMm   Float?      @map("distancia_colunas_vertical_mm")
+  alturaMoldeMinMm             Float?      @map("altura_molde_min_mm")
+  alturaMoldeMaxMm             Float?      @map("altura_molde_max_mm")
+  pesoMaxMoldeKg               Float?      @map("peso_max_molde_kg")
+  pressaoInjecaoBar            Float?      @map("pressao_injecao_bar")
+  capacidadeInjecaoG           Float?      @map("capacidade_injecao_g")
+  capacidadeKgH                Float?      @map("capacidade_kg_h")
+  /// Lista de { nome, valor, unidade }.
+  parametrosAdicionais         Json        @default("[]") @map("parametros_adicionais")
+  criadoEm                     DateTime    @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm                 DateTime    @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  fichas FichaTecnica[]
+
+  @@map("maquina")
+}
+
+model Molde {
+  id               String   @id @default(uuid()) @db.Uuid
+  codigo           String   @unique
+  descricao        String
+  larguraMm        Float    @map("largura_mm")
+  comprimentoMm    Float    @map("comprimento_mm")
+  alturaMm         Float    @map("altura_mm")
+  pesoKg           Float    @map("peso_kg")
+  numeroCavidades  Int      @map("numero_cavidades")
+  forcaFechamentoT Float    @map("forca_fechamento_t")
+  pressaoBar       Float    @map("pressao_bar")
+  pesoInjetadoG    Float    @map("peso_injetado_g")
+  /// Informado pelo usuário: o molde pode ser montado girado 90° entre as colunas.
+  podeGirar        Boolean  @default(false) @map("pode_girar")
+  ativo            Boolean  @default(true)
+  criadoEm         DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm     DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  cavidades CavidadeMolde[]
+  fichas    FichaTecnica[]
+
+  @@map("molde")
+}
+
+model CavidadeMolde {
+  id        String  @id @default(uuid()) @db.Uuid
+  moldeId   String  @map("molde_id") @db.Uuid
+  numero    Int
+  produtoId String? @map("produto_id") @db.Uuid
+
+  molde   Molde    @relation(fields: [moldeId], references: [id], onDelete: Cascade)
+  produto Produto? @relation(fields: [produtoId], references: [id])
+
+  @@unique([moldeId, numero])
+  @@map("cavidade_molde")
+}
+
+model Produto {
+  id        String      @id @default(uuid()) @db.Uuid
+  codigo    String      @unique
+  descricao String
+  tipo      TipoProduto
+  unidade   Unidade
+  cor       String?
+  ativo     Boolean     @default(true)
+  criadoEm  DateTime    @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  cavidades   CavidadeMolde[]
+  conjuntos   ConjuntoPadrao[]
+  fichas      FichaTecnica[]
+  componentes ComponenteFicha[]
+
+  @@map("produto")
+}
+
+model ConjuntoPadrao {
+  id            String        @id @default(uuid()) @db.Uuid
+  produtoId     String        @map("produto_id") @db.Uuid
+  tipoEmbalagem TipoEmbalagem @map("tipo_embalagem")
+  quantidade    Float
+  ativo         Boolean       @default(true)
+  criadoEm      DateTime      @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm  DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  @@unique([produtoId, tipoEmbalagem])
+  @@map("conjunto_padrao")
+}
+
+// ---------------- Ficha técnica (RN-02) ----------------
+
+model FichaTecnica {
+  id                 String        @id @default(uuid()) @db.Uuid
+  produtoId          String        @map("produto_id") @db.Uuid
+  /// Nulo na extrusão (produto + máquina).
+  moldeId            String?       @map("molde_id") @db.Uuid
+  maquinaId          String        @map("maquina_id") @db.Uuid
+  versao             Int
+  situacao           SituacaoFicha @default(RASCUNHO)
+  cicloS             Float?        @map("ciclo_s")
+  cavidades          Int
+  phPadrao           Float         @map("ph_padrao")
+  phCalculado        Boolean       @default(false) @map("ph_calculado")
+  pesoPadraoG        Float?        @map("peso_padrao_g")
+  toleranciaPesoPct  Float?        @map("tolerancia_peso_pct")
+  /// Lista de { nome, valor, unidade } (temperaturas, pressões, tempos).
+  parametrosProcesso Json          @default("[]") @map("parametros_processo")
+  observacao         String?
+  parecerReprovacao  String?       @map("parecer_reprovacao")
+  criadoPorId        String        @map("criado_por_id") @db.Uuid
+  aprovadorId        String?       @map("aprovador_id") @db.Uuid
+  vigenteDesde       DateTime?     @map("vigente_desde") @db.Timestamptz(3)
+  obsoletaEm         DateTime?     @map("obsoleta_em") @db.Timestamptz(3)
+  criadoEm           DateTime      @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm       DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  produto    Produto           @relation(fields: [produtoId], references: [id])
+  molde      Molde?            @relation(fields: [moldeId], references: [id])
+  maquina    Maquina           @relation(fields: [maquinaId], references: [id])
+  criadoPor  Usuario           @relation("FichaCriadaPor", fields: [criadoPorId], references: [id])
+  aprovador  Usuario?          @relation("FichaAprovadaPor", fields: [aprovadorId], references: [id])
+  composicao ComponenteFicha[]
+
+  @@index([produtoId, moldeId, maquinaId])
+  @@map("ficha_tecnica")
+}
+
+model ComponenteFicha {
+  id              String @id @default(uuid()) @db.Uuid
+  fichaId         String @map("ficha_id") @db.Uuid
+  materialId      String @map("material_id") @db.Uuid
+  consumoGPorPeca Float? @map("consumo_g_por_peca")
+  percentual      Float?
+
+  ficha    FichaTecnica @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+  material Produto      @relation(fields: [materialId], references: [id])
+
+  @@unique([fichaId, materialId])
+  @@map("componente_ficha")
+}
+
+// ---------------- Demais cadastros ----------------
+
+model MotivoParada {
+  id                        String   @id @default(uuid()) @db.Uuid
+  codigo                    String   @unique
+  descricao                 String
+  programada                Boolean
+  geraSolicitacaoManutencao Boolean  @default(false) @map("gera_solicitacao_manutencao")
+  ativo                     Boolean  @default(true)
+  criadoEm                  DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm              DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  @@map("motivo_parada")
+}
+
+model TipoPerda {
+  id              String   @id @default(uuid()) @db.Uuid
+  descricao       String   @unique
+  contaComoRefugo Boolean  @default(false) @map("conta_como_refugo")
+  ativo           Boolean  @default(true)
+  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm    DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  @@map("tipo_perda")
+}
+
+model LocalEstoque {
+  id        String           @id @default(uuid()) @db.Uuid
+  nome      String           @unique
+  tipo      TipoLocalEstoque
+  ativo     Boolean          @default(true)
+  criadoEm  DateTime         @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  @@map("local_estoque")
+}
+
+model Impressora {
+  id           String   @id @default(uuid()) @db.Uuid
+  nome         String   @unique
+  enderecoIp   String   @map("endereco_ip")
+  porta        Int      @default(9100)
+  resolucaoDpi Int      @map("resolucao_dpi")
+  ativa        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  layouts LayoutEtiqueta[]
+
+  @@map("impressora")
+}
+
+model LayoutEtiqueta {
+  id                 String       @id @default(uuid()) @db.Uuid
+  nome               String       @unique
+  tipoEtiqueta       TipoEtiqueta @map("tipo_etiqueta")
+  larguraMm          Float        @map("largura_mm")
+  alturaMm           Float        @map("altura_mm")
+  modeloZpl          String       @map("modelo_zpl")
+  impressoraPadraoId String?      @map("impressora_padrao_id") @db.Uuid
+  ativo              Boolean      @default(true)
+  criadoEm           DateTime     @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm       DateTime     @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  impressoraPadrao Impressora? @relation(fields: [impressoraPadraoId], references: [id])
+
+  @@map("layout_etiqueta")
+}
+
+/// Posto/dispositivo (tablet). O prefixo de 2 caracteres compõe o código das etiquetas (seção 8).
+model Dispositivo {
+  id        String   @id @default(uuid()) @db.Uuid
+  nome      String   @unique
+  prefixo   String   @unique
+  descricao String?
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  @@map("dispositivo")
+}
