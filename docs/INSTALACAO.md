@@ -101,6 +101,51 @@ O tempo real do painel usa uma conexão longa; o Caddy já a repassa sem ajuste.
 
 ---
 
+## 3A. Banco no Supabase (opcional)
+
+Em vez do banco local (`db`), o sistema pode usar um PostgreSQL gerenciado no **Supabase**. A API, o site e o agente de impressão continuam rodando no seu servidor (local ou na nuvem); só os dados ficam no Supabase. O Supabase cuida do servidor do banco e faz backups diários do lado dele.
+
+1. No painel do Supabase, abra o projeto (ex.: `gpro-apontamento`) e defina a senha do banco em **Project Settings → Database → Reset database password**. Guarde a senha.
+2. Clique em **Connect** (topo da página) → aba **Connection string** → **Session pooler** e copie a URL. Ela tem o formato:
+
+   `postgresql://postgres.REF-DO-PROJETO:[YOUR-PASSWORD]@aws-0-sa-east-1.pooler.supabase.com:5432/postgres`
+
+   Use o **Session pooler** (porta 5432): ele funciona em qualquer rede (a conexão direta do plano gratuito é só IPv6) e aceita as migrations e as travas que o sistema usa. Não use o Transaction pooler (porta 6543).
+
+3. No `.env`, troque `[YOUR-PASSWORD]` pela senha e acrescente `?sslmode=require` no fim:
+
+   `SUPABASE_DATABASE_URL=postgresql://postgres.REF-DO-PROJETO:SENHA@aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require`
+
+   Se a senha tiver caracteres especiais (`@`, `:`, `/`, `#`, `?`), troque cada um pelo código correspondente (`%40`, `%3A`, `%2F`, `%23`, `%3F`).
+
+4. Suba usando o arquivo adicional do Supabase (o banco local não sobe):
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.supabase.yml up -d --build
+   ```
+
+   Na primeira subida, a API cria as tabelas no Supabase e, com `CARREGAR_DADOS_EXEMPLO=true`, carrega os dados de exemplo.
+
+5. Para os demais comandos (`ps`, `logs`, `exec`), use sempre os dois arquivos, por exemplo `docker compose -f docker-compose.yml -f docker-compose.supabase.yml logs api`.
+
+**Backup com Supabase:** o serviço `backup` continua gerando a cópia diária na pasta `backups` do servidor, agora a partir do Supabase. Para restaurar uma dessas cópias no Supabase (substitui os dados atuais):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml stop api web
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml run --rm --entrypoint sh backup -c 'pg_restore -d "$DATABASE_URL" --clean --if-exists --no-owner /backups/apontamento-AAAAMMDD-HHMMSS.dump'
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml up -d api web
+```
+
+**Segurança:** as tabelas do sistema ficam no schema `public` com RLS ligado e sem acesso para os papéis `anon` e `authenticated` do Supabase, então a API REST do Supabase (chave anônima) não lê nada. Todo acesso passa pela API do sistema.
+
+---
+
 ## 4. Agente de impressão (rede da fábrica)
 
 O tablet envia cada etiqueta ao agente, que a repassa para a Zebra. Por isso a impressão funciona **mesmo sem internet e com o servidor fora do ar**, desde que tablet, agente e impressora estejam na mesma rede da fábrica.

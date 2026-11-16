@@ -1,0 +1,18 @@
+# Banco no Supabase (PostgreSQL gerenciado) em vez do banco local.
+# Uso:  docker compose -f docker-compose.yml -f docker-compose.supabase.yml up -d --build
+# No .env, informe SUPABASE_DATABASE_URL (ver docs/INSTALACAO.md, seção "Banco no Supabase").
+services:
+  db:
+    # O banco local não sobe: fica só no perfil "banco-local".
+    profiles: ['banco-local']
+
+  api:
+    depends_on: !reset {}
+    environment:
+      DATABASE_URL: ${SUPABASE_DATABASE_URL:?Informe SUPABASE_DATABASE_URL no arquivo .env}
+
+  backup:
+    # Cópia diária extra, na pasta do servidor, além dos backups do próprio Supabase.
+    depends_on: !reset {}
+    environment:
+      DATABASE_URL: ${SUPABASE_DATABASE_URL:?Informe SUPABASE_DATABASE_URL no arquivo .env}

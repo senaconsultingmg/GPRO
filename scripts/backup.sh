@@ -7,13 +7,18 @@ set -eu
 DIR="${BACKUP_DIR:-/backups}"
 RETENCAO="${RETENCAO_DIAS:-14}"
 HORA="${BACKUP_HORA:-02:00}"
-export PGPASSWORD="$POSTGRES_PASSWORD"
+export PGPASSWORD="${POSTGRES_PASSWORD:-}"
 mkdir -p "$DIR"
 
 fazer_backup() {
   ARQ="$DIR/apontamento-$(date +%Y%m%d-%H%M%S).dump"
   echo "[backup] $(date '+%d/%m/%Y %H:%M:%S') gerando $ARQ"
-  pg_dump -h "${POSTGRES_HOST:-db}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "$ARQ.parcial"
+  if [ -n "${DATABASE_URL:-}" ]; then
+    # Banco externo (ex.: Supabase): usa a URL completa.
+    pg_dump "$DATABASE_URL" -Fc --no-owner --schema=public -f "$ARQ.parcial"
+  else
+    pg_dump -h "${POSTGRES_HOST:-db}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "$ARQ.parcial"
+  fi
   mv "$ARQ.parcial" "$ARQ"
   # Mantém só os RETENCAO arquivos mais recentes.
   ls -1t "$DIR"/apontamento-*.dump 2>/dev/null | tail -n +"$((RETENCAO + 1))" | while read -r velho; do

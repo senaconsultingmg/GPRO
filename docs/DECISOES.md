@@ -329,3 +329,11 @@ Segunda rodada (pedido do usuário: OS com etapas por especialidade):
 
 - Backup com `pg_dump -Fc` em pasta montada do servidor (`BACKUP_PASTA`), retenção por quantidade de arquivos (`RETENCAO_DIAS`). Restauração por `scripts/restaurar.sh` (para API e site, recria o banco, `pg_restore`, sobe de novo).
 - Rota do tempo real (`/api/painel/fluxo`) no nginx sem buffer e com conexão longa.
+
+## Banco no Supabase (16/11/2026, a pedido do usuário)
+
+- Projeto **gpro-apontamento** criado no Supabase (região São Paulo, plano gratuito), separado do projeto sipoc-processos.
+- As tabelas são criadas pela própria API na primeira subida (`prisma migrate deploy`), mantendo o controle de migrations do Prisma; os dados de exemplo entram com `CARREGAR_DADOS_EXEMPLO=true`.
+- Conexão pelo **Session pooler** (porta 5432, funciona em IPv4 e aceita migrations e travas) com `sslmode=require`. A API cifra a conexão sem validar a cadeia do certificado (como o libpq faz com `require`); `sslmode=verify-full` valida.
+- Segurança: migration `seguranca_supabase` liga RLS em todas as tabelas (sem políticas; a API conecta como dona e não é afetada) e os privilégios padrão do papel `postgres` no schema `public` foram revogados para `anon` e `authenticated`. A API REST pública do Supabase não lê nenhuma tabela do sistema.
+- `docker-compose.supabase.yml` desliga o banco local e aponta API e backup para `SUPABASE_DATABASE_URL`; o backup diário continua na pasta do servidor.
