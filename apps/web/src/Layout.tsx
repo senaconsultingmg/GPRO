@@ -43,6 +43,8 @@ import {
   IconStack2,
   IconFileSpreadsheet,
   IconChecklist,
+  IconAlertTriangle,
+  IconClockExclamation,
   IconTool,
   IconDeviceTv,
   IconChartLine,
@@ -52,6 +54,7 @@ import { Link, Outlet, useLocation } from 'react-router';
 import { ROTULO_PERFIL, type Permissao } from '@apontamento/shared';
 import { useAutenticacao } from './autenticacao/ContextoAutenticacao';
 import { ModalTrocarSenha } from './paginas/TrocarSenha';
+import { IndicadorConexao } from './componentes/IndicadorConexao';
 
 interface ItemMenu {
   rotulo: string;
@@ -93,6 +96,12 @@ const GRUPOS: { titulo: string; itens: ItemMenu[] }[] = [
         caminho: '/turnos',
         icone: <IconReport size={18} />,
         permissao: 'turnos.ler',
+      },
+      {
+        rotulo: 'Lançamentos recusados',
+        caminho: '/recusados',
+        icone: <IconAlertTriangle size={18} />,
+        permissao: 'recusados.ler',
       },
       {
         rotulo: 'Aprovações',
@@ -236,6 +245,12 @@ const GRUPOS: { titulo: string; itens: ItemMenu[] }[] = [
         permissao: 'cadastros.ler',
       },
       {
+        rotulo: 'Alertas de relógio',
+        caminho: '/alertas-relogio',
+        icone: <IconClockExclamation size={18} />,
+        permissao: 'alertas.relogio',
+      },
+      {
         rotulo: 'Layouts de etiqueta',
         caminho: '/layouts-etiqueta',
         icone: <IconTag size={18} />,
@@ -290,6 +305,7 @@ export function Layout() {
               Apontamento de Produção
             </Text>
           </Group>
+          <IndicadorConexao />
           <Menu position="bottom-end">
             <Menu.Target>
               <UnstyledButton aria-label="Menu do usuário">
@@ -351,7 +367,7 @@ export function Layout() {
           <Group px="sm" mt="xl" gap={4}>
             <IconSettings size={14} color="gray" />
             <Badge variant="outline" color="gray" size="sm">
-              Fase 6
+              Fase 7
             </Badge>
           </Group>
         </ScrollArea>

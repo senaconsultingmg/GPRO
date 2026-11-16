@@ -75,6 +75,8 @@ export interface EventoLista {
   justificativa: string | null;
   dados: Record<string, unknown>;
   usuario: { nome: string };
+  /** Lançamento feito no tablet e ainda não enviado ao servidor (seção 11). */
+  pendenteEnvio?: boolean;
 }
 
 export interface TurnoDetalhe {

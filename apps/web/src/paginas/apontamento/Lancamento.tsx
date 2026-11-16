@@ -26,7 +26,8 @@ import {
 } from '@apontamento/shared';
 import { api } from '../../api/cliente';
 import { useLista } from '../../componentes/PaginaCadastro';
-import { imprimirComAviso } from '../../componentes/notificarImpressao';
+import { lancarEvento } from '../../offline/acoes';
+import { consultarComCache, lerPacote } from '../../offline/pacote';
 import { useLotes } from '../MateriaPrima';
 import {
   AlertaErroApi,
@@ -102,6 +103,8 @@ export function FormularioLancamento({
   tipo,
   aoConcluir,
   correcao,
+  inicial,
+  aoRegistrar,
 }: {
   turno: TurnoDetalhe;
   maquina: MaquinaNoTurno;
@@ -109,18 +112,38 @@ export function FormularioLancamento({
   aoConcluir: () => void;
   /** Modo correção (RN-09): parte dos valores do lançamento original e envia a solicitação ao líder. */
   correcao?: EventoLista;
+  /** Relançar corrigido (seção 11): valores do lançamento recusado na sincronização. */
+  inicial?: Record<string, unknown>;
+  /** Chamado com o identificador do novo lançamento depois de registrado. */
+  aoRegistrar?: (eventoId: string, enviado: boolean) => void;
 }) {
   const cliente = useQueryClient();
   // O identificador é gerado uma vez: reenviar após falha de rede não duplica o lançamento.
   const [idEvento] = useState(() => crypto.randomUUID());
-  const od = (correcao?.dados ?? {}) as Record<string, unknown>;
+  const ini = inicial ?? {};
+  const od = (correcao?.dados ?? {
+    motivoParadaId: ini.motivoParadaId,
+    conjuntoPadraoId: ini.conjuntoPadraoId,
+    pesoMedioG: ini.pesoMedioG,
+    tipoPerdaId: ini.tipoPerdaId,
+    pesoKg: ini.pesoKg,
+    quantidadePecas: ini.quantidadePecas,
+    lote: ini.leitura,
+    quantidadeKg: ini.quantidadeKg,
+    divisaoDestinoId: ini.divisaoDestinoId,
+    cavidade: ini.cavidade,
+    motivo: ini.motivo,
+  }) as Record<string, unknown>;
   const conjuntosOriginais = (od.conjuntos as { quantidade: number; avulso: boolean }[] | undefined) ?? [];
-  const [hora, setHora] = useState(paraCampoHora(correcao?.horaOcorrencia));
-  const [horaEditada, setHoraEditada] = useState(!!correcao);
-  const [justificativa, setJustificativa] = useState(correcao?.justificativa ?? '');
+  const horaInicial = correcao?.horaOcorrencia ?? (ini.horaOcorrencia as string | undefined);
+  const [hora, setHora] = useState(paraCampoHora(horaInicial));
+  const [horaEditada, setHoraEditada] = useState(!!horaInicial);
+  const [justificativa, setJustificativa] = useState(
+    correcao?.justificativa ?? (ini.justificativa as string | null) ?? '',
+  );
   const [motivoCorrecao, setMotivoCorrecao] = useState('');
   const [divisaoId, setDivisaoId] = useState<string | null>(
-    correcao?.divisaoId ?? maquina.divisoes[0]?.id ?? null,
+    correcao?.divisaoId ?? (ini.divisaoId as string | undefined) ?? maquina.divisoes[0]?.id ?? null,
   );
   const [motivoParadaId, setMotivoParadaId] = useState<string | null>(
     (od.motivoParadaId as string | undefined) ?? null,
@@ -129,10 +152,13 @@ export function FormularioLancamento({
     (od.conjuntoPadraoId as string | undefined) ?? null,
   );
   const [conjuntosPadrao, setConjuntosPadrao] = useState<number>(
-    correcao ? conjuntosOriginais.filter((c) => !c.avulso).length : 1,
+    correcao
+      ? conjuntosOriginais.filter((c) => !c.avulso).length
+      : ((ini.conjuntosPadrao as number | undefined) ?? 1),
   );
   const [avulsos, setAvulsos] = useState<(number | string)[]>(
-    conjuntosOriginais.filter((c) => c.avulso).map((c) => c.quantidade),
+    (ini.avulsos as number[] | undefined) ??
+      conjuntosOriginais.filter((c) => c.avulso).map((c) => c.quantidade),
   );
   const [confirmarAvulso, setConfirmarAvulso] = useState(false);
   const [pesoMedioG, setPesoMedioG] = useState<number | string>((od.pesoMedioG as number | undefined) ?? '');
@@ -167,15 +193,17 @@ export function FormularioLancamento({
   const destinos = useQuery({
     queryKey: ['turnos', 'divisoes-abertas'],
     queryFn: () =>
-      api.get<
-        {
-          id: string;
-          codigo: string;
-          maquinaId: string;
-          maquina: { codigo: string };
-          ordem: { produto: { codigo: string } };
-        }[]
-      >('/turnos/divisoes-abertas'),
+      consultarComCache('divisoes-abertas', () =>
+        api.get<
+          {
+            id: string;
+            codigo: string;
+            maquinaId: string;
+            maquina: { codigo: string };
+            ordem: { produto: { codigo: string } };
+          }[]
+        >('/turnos/divisoes-abertas'),
+      ).catch(async () => (await lerPacote())?.divisoesAbertas ?? []),
     enabled: tipo === 'TRANSFERENCIA',
   });
 
@@ -278,21 +306,17 @@ export function FormularioLancamento({
     onError: (e) => setErros(errosApiPorCampo(e)),
   });
 
+  // Seção 11: grava no tablet e envia; sem conexão fica na fila e as etiquetas saem pelo agente local.
   const enviar = useMutation({
-    mutationFn: (c: Record<string, unknown>) =>
-      api.post<{ avisos: string[]; etiquetas: { id: string; codigo: string }[] }>(
-        `/turnos/${turno.id}/eventos`,
-        c,
-      ),
-    onSuccess: (r) => {
+    mutationFn: (c: Record<string, unknown>) => lancarEvento(turno, maquina, c),
+    onSuccess: (r, c) => {
       cliente.invalidateQueries({ queryKey: ['turno', turno.id] });
-      notificarSucesso('Lançamento registrado.');
-      for (const a of r.avisos ?? []) notificarSucesso(a);
+      if (r.enviado) {
+        notificarSucesso('Lançamento registrado.');
+        for (const a of r.corpo.avisos ?? []) notificarSucesso(a);
+      }
+      aoRegistrar?.(String(c.id), r.enviado);
       aoConcluir();
-      // Uma etiqueta por conjunto/volume/perda/devolução/transferência; falha deixa pendente.
-      void imprimirComAviso(r.etiquetas ?? []).then(() =>
-        cliente.invalidateQueries({ queryKey: ['etiquetas'] }),
-      );
     },
     onError: (e) => setErros(errosApiPorCampo(e)),
   });

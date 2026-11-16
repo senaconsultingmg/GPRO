@@ -4,13 +4,13 @@ import {
   codigoDivisao,
   horarioVigente,
   horasDisponiveisSugeridas,
-  ordenarEventosTempo,
   periodoNominal,
   ROTULO_TIPO_EVENTO,
   type EventoEntrada,
-  type EventoTempo,
   type FecharTurno,
   type TipoEvento,
+  estadoMaquina,
+  type EstadoMaquina,
 } from '@apontamento/shared';
 import { Prisma, type TurnoApontamento } from '../generated/prisma/client.js';
 import { PrismaService, type Transacao } from '../prisma/prisma.service.js';
@@ -23,39 +23,8 @@ import { EventosService, type ContextoLancamento } from './eventos.service.js';
 const deDate = (d: Date) => d.toISOString().slice(0, 10);
 const paraDate = (d: string) => new Date(`${d}T00:00:00.000Z`);
 
-export type EstadoMaquina = {
-  situacao: 'LIGADA' | 'PARADA' | 'DESLIGADA';
-  desde: Date | null;
-  motivoParadaId: string | null;
-};
-
-/** Estado atual da máquina a partir dos eventos de tempo (válidos) do turno. */
-export function estadoMaquina(
-  eventos: { tipo: string; horaOcorrencia: Date; recebidoEm: Date; dados: unknown }[],
-): EstadoMaquina {
-  let estado: EstadoMaquina = { situacao: 'DESLIGADA', desde: null, motivoParadaId: null };
-  const tempo = eventos
-    .filter((e) => ['INICIO_MAQUINA', 'FIM_MAQUINA', 'PARADA', 'REINICIO'].includes(e.tipo))
-    .map((e) => ({
-      tipo: e.tipo as EventoTempo['tipo'],
-      hora: e.horaOcorrencia.getTime(),
-      seq: e.recebidoEm.getTime(),
-      dados: e.dados,
-    }));
-  for (const e of ordenarEventosTempo(tempo)) {
-    const desde = new Date(e.hora);
-    if (e.tipo === 'INICIO_MAQUINA' || e.tipo === 'REINICIO')
-      estado = { situacao: 'LIGADA', desde, motivoParadaId: null };
-    else if (e.tipo === 'PARADA')
-      estado = {
-        situacao: 'PARADA',
-        desde,
-        motivoParadaId: (e.dados as { motivoParadaId: string }).motivoParadaId,
-      };
-    else estado = { situacao: 'DESLIGADA', desde, motivoParadaId: null };
-  }
-  return estado;
-}
+/** Estado atual da máquina: função compartilhada com o tablet (seção 11). */
+export { estadoMaquina, type EstadoMaquina };
 
 const VISIVEIS_PCP = ['APROVADO', 'APURADO', 'EXPORTADO'];
 /** Perfil PCP sem perfil operacional (líder, apontador, superusuário). */
@@ -135,15 +104,78 @@ export class TurnosService {
   }
 
   /** O apontador só lança no turno que ele abriu e enquanto estiver aberto (seção 5). */
-  private async carregarParaLancar(id: string, usuario: UsuarioAutenticado): Promise<TurnoApontamento> {
-    const turno = await this.carregar(id);
+  private async carregarParaLancar(
+    id: string,
+    usuario: UsuarioAutenticado,
+    dispositivo?: string,
+  ): Promise<TurnoApontamento> {
+    let turno = await this.carregar(id);
     if (turno.apontadorId !== usuario.id) throw proibido('Você só pode lançar no turno que você abriu.');
     if (turno.situacao !== 'ABERTO') throw conflito('Turno fechado não recebe novos lançamentos.');
+    if (dispositivo && turno.dispositivo !== dispositivo)
+      turno = await this.trocarAparelho(turno, usuario, dispositivo);
     return turno;
   }
 
-  private ctx(turno: TurnoApontamento, usuario: UsuarioAutenticado, dispositivo: string): ContextoLancamento {
-    return { turno, usuario, dispositivo, agora: new Date() };
+  private ctx(
+    turno: TurnoApontamento,
+    usuario: UsuarioAutenticado,
+    dispositivo: string,
+    agora: Date = new Date(),
+  ): ContextoLancamento {
+    return { turno, usuario, dispositivo, agora };
+  }
+
+  /**
+   * Seção 11 — um turno, um dispositivo: outro tablet só continua o turno se o anterior informou
+   * fila vazia, ou se o líder liberou a troca. A troca fica na auditoria.
+   */
+  private async trocarAparelho(turno: TurnoApontamento, usuario: UsuarioAutenticado, dispositivo: string) {
+    const fila = await this.prisma.estadoFilaAparelho.findUnique({
+      where: { aparelho_turnoId: { aparelho: turno.dispositivo, turnoId: turno.id } },
+    });
+    if (fila && fila.pendentes > 0 && !turno.trocaAparelhoLiberada) {
+      throw conflito(
+        `Este turno está aberto em outro tablet com ${fila.pendentes} lançamento(s) ainda não enviado(s). Conecte aquele tablet para enviar a fila ou peça ao líder para liberar a troca.`,
+      );
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const novo = await tx.turnoApontamento.update({
+        where: { id: turno.id },
+        data: { dispositivo, trocaAparelhoLiberada: false },
+      });
+      await this.auditoria.registrar(tx, {
+        usuario,
+        entidade: 'TurnoApontamento',
+        entidadeId: turno.id,
+        acao: 'TROCAR_APARELHO',
+        anterior: { dispositivo: turno.dispositivo, pendentesInformados: fila?.pendentes ?? null },
+        novo: { dispositivo, liberadoPeloLider: turno.trocaAparelhoLiberada },
+      });
+      return novo;
+    });
+  }
+
+  /** O líder libera a troca de tablet quando o anterior não pode enviar a fila (ex.: quebrou). */
+  async liberarAparelho(turnoId: string, justificativa: string, usuario: UsuarioAutenticado) {
+    const turno = await this.carregar(turnoId);
+    if (turno.situacao !== 'ABERTO') throw conflito('Só turnos abertos podem trocar de tablet.');
+    return this.prisma.$transaction(async (tx) => {
+      const novo = await tx.turnoApontamento.update({
+        where: { id: turnoId },
+        data: { trocaAparelhoLiberada: true },
+      });
+      await this.auditoria.registrar(tx, {
+        usuario,
+        entidade: 'TurnoApontamento',
+        entidadeId: turnoId,
+        acao: 'LIBERAR_TROCA_APARELHO',
+        anterior: { trocaAparelhoLiberada: false },
+        novo: { trocaAparelhoLiberada: true, justificativa },
+        completo: true,
+      });
+      return novo;
+    });
   }
 
   /** Visão completa do turno para a tela do apontador. */
@@ -312,10 +344,25 @@ export class TurnosService {
   // ---------- Abertura ----------
 
   async abrir(
-    dados: { data: string; horarioTurnoId: string; equipeId: string },
+    dados: {
+      data: string;
+      horarioTurnoId: string;
+      equipeId: string;
+      id?: string | null;
+      abertoEm?: string | null;
+    },
     usuario: UsuarioAutenticado,
     dispositivo: string,
+    quando?: Date,
   ) {
+    // Offline: reenvio da mesma abertura não duplica o turno.
+    if (dados.id) {
+      const existente = await this.prisma.turnoApontamento.findUnique({ where: { id: dados.id } });
+      if (existente) {
+        if (existente.apontadorId !== usuario.id) throw conflito('Identificador de turno já usado.');
+        return this.detalhe(existente.id);
+      }
+    }
     const aberto = await this.meuAberto(usuario);
     if (aberto) throw conflito('Você já tem um turno aberto. Feche-o antes de abrir outro.');
     const [horario, equipe] = await Promise.all([
@@ -335,6 +382,8 @@ export class TurnosService {
           inicioNominal: nominal.inicio,
           fimNominal: nominal.fim,
           dispositivo,
+          ...(dados.id ? { id: dados.id } : {}),
+          abertoEm: dados.abertoEm ? new Date(dados.abertoEm) : (quando ?? new Date()),
         },
       });
       await this.auditoria.registrar(tx, {
@@ -413,8 +462,15 @@ export class TurnosService {
     },
     usuario: UsuarioAutenticado,
     dispositivo: string,
+    quando?: Date,
   ) {
-    const turno = await this.carregarParaLancar(turnoId, usuario);
+    // Offline: o evento de início já gravado indica que esta ligação já foi recebida.
+    const ja = await this.prisma.evento.findUnique({ where: { id: dados.eventoId } });
+    if (ja) {
+      if (ja.turnoId !== turnoId) throw conflito('Identificador de lançamento já usado em outro turno.');
+      return this.detalhe(turnoId);
+    }
+    const turno = await this.carregarParaLancar(turnoId, usuario, dispositivo);
     const maquina = await this.prisma.maquina.findUnique({ where: { id: dados.maquinaId } });
     if (!maquina?.ativa) throw new ErroNegocio('Máquina inexistente ou inativa.');
     const rodada = await this.prisma.rodada.findUnique({ where: { id: dados.rodadaId } });
@@ -440,7 +496,7 @@ export class TurnosService {
       await tx.maquinaTurno.create({
         data: { turnoId: turno.id, maquinaId: maquina.id, rodadaId: rodada.id },
       });
-      const ctx = this.ctx(turno, usuario, dispositivo);
+      const ctx = this.ctx(turno, usuario, dispositivo, quando);
       await this.eventos.registrar(tx, ctx, {
         id: dados.eventoId,
         tipo: 'INICIO_MAQUINA',
@@ -478,7 +534,8 @@ export class TurnosService {
 
   // ---------- Divisão da OP ----------
 
-  private async saldoSoltoPendente(tx: Transacao | PrismaService, ordemId: string) {
+  /** Saldo solto deixado por turnos anteriores e ainda não recebido (público para o pacote offline). */
+  async saldoSoltoPendente(tx: Transacao | PrismaService, ordemId: string) {
     const deixados = await tx.evento.findMany({
       where: {
         tipo: 'SALDO_AVULSO_DEIXADO',
@@ -572,11 +629,21 @@ export class TurnosService {
       maquinaId: string;
       horasDisponiveis?: number | null;
       saldoRecebido?: number | null;
+      id?: string | null;
     },
     usuario: UsuarioAutenticado,
     dispositivo: string,
+    quando?: Date,
   ) {
-    const turno = await this.carregarParaLancar(turnoId, usuario);
+    if (dados.id) {
+      const existente = await this.prisma.divisaoOp.findUnique({ where: { id: dados.id } });
+      if (existente) {
+        if (existente.turnoId !== turnoId)
+          throw conflito('Identificador de divisão já usado em outro turno.');
+        return existente;
+      }
+    }
+    const turno = await this.carregarParaLancar(turnoId, usuario, dispositivo);
     const proposta = await this.propostaDivisao(
       turnoId,
       dados.rodadaOpId,
@@ -603,6 +670,7 @@ export class TurnosService {
       const sequencial = (ultima._max.sequencial ?? 0) + 1;
       const divisao = await tx.divisaoOp.create({
         data: {
+          ...(dados.id ? { id: dados.id } : {}),
           ordemId: ordem.id,
           rodadaOpId: dados.rodadaOpId,
           sequencial,
@@ -626,12 +694,13 @@ export class TurnosService {
             [{ campo: 'saldoRecebido', mensagem: 'Confirme o saldo recebido.' }],
           );
         }
-        await this.eventos.registrar(tx, this.ctx(turno, usuario, dispositivo), {
+        const agora = quando ?? new Date();
+        await this.eventos.registrar(tx, this.ctx(turno, usuario, dispositivo, agora), {
           id: this.eventos.novoId(),
           tipo: 'SALDO_AVULSO_RECEBIDO',
           maquinaId: dados.maquinaId,
           divisaoId: divisao.id,
-          horaOcorrencia: new Date().toISOString(),
+          horaOcorrencia: agora.toISOString(),
           quantidade: dados.saldoRecebido,
           dados: { deixadoEventoIds: pendente.eventoIds, quantidadeDeixada: pendente.quantidade },
         });
@@ -704,8 +773,9 @@ export class TurnosService {
     usuario: UsuarioAutenticado,
     dispositivo: string,
     postoId: string | null = null,
+    quando?: Date,
   ) {
-    const turno = await this.carregarParaLancar(turnoId, usuario);
+    const turno = await this.carregarParaLancar(turnoId, usuario, dispositivo);
     if (entrada.tipo === 'INICIO_MAQUINA') {
       const mt = await this.prisma.maquinaTurno.findUnique({
         where: { turnoId_maquinaId: { turnoId, maquinaId: entrada.maquinaId } },
@@ -713,14 +783,25 @@ export class TurnosService {
       if (!mt) throw new ErroNegocio('Use "Ligar máquina" para incluir a máquina no turno.');
     }
     return this.prisma.$transaction((tx) =>
-      this.eventos.registrar(tx, { ...this.ctx(turno, usuario, dispositivo), postoId }, entrada),
+      this.eventos.registrar(tx, { ...this.ctx(turno, usuario, dispositivo, quando), postoId }, entrada),
     );
   }
 
   // ---------- Fechamento (RN-13) ----------
 
-  async fechar(turnoId: string, dados: FecharTurno, usuario: UsuarioAutenticado, dispositivo: string) {
-    const turno = await this.carregarParaLancar(turnoId, usuario);
+  async fechar(
+    turnoId: string,
+    dados: FecharTurno,
+    usuario: UsuarioAutenticado,
+    dispositivo: string,
+    quando?: Date,
+  ) {
+    // Offline: reenvio do fechamento de um turno já fechado pelo mesmo apontador não falha.
+    const atual = await this.carregar(turnoId);
+    if (atual.situacao === 'FECHADO' && atual.apontadorId === usuario.id) {
+      return this.detalhe(turnoId);
+    }
+    const turno = await this.carregarParaLancar(turnoId, usuario, dispositivo);
     const maquinas = await this.prisma.maquinaTurno.findMany({
       where: { turnoId },
       include: { maquina: true },
@@ -745,7 +826,7 @@ export class TurnosService {
         throw new ErroNegocio(`A OP ${d.codigo} é em kg e não tem saldo solto.`);
     }
 
-    const agora = new Date();
+    const agora = dados.horaFechamento ? new Date(dados.horaFechamento) : (quando ?? new Date());
     await this.prisma.$transaction(async (tx) => {
       const ctx: ContextoLancamento = { turno, usuario, dispositivo, agora };
       for (const mt of maquinas) {

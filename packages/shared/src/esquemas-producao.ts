@@ -58,7 +58,14 @@ export const esquemaRodada = z.object({
 export type RodadaEntrada = z.infer<typeof esquemaRodada>;
 
 // ---------- Turno (RN-04) ----------
-export const esquemaAbrirTurno = z.object({ data: dataCivil, horarioTurnoId: id, equipeId: id });
+export const esquemaAbrirTurno = z.object({
+  data: dataCivil,
+  horarioTurnoId: id,
+  equipeId: id,
+  /** Offline (seção 11): identificador gerado no tablet e hora de abertura no relógio dele. */
+  id: id.nullish(),
+  abertoEm: instante.nullish(),
+});
 
 export const esquemaLigarMaquina = z.object({
   eventoId: id,
@@ -75,6 +82,8 @@ export const esquemaCriarDivisao = z.object({
   horasDisponiveis: z.number().min(0).max(24).nullish(),
   /** Saldo solto recebido do turno anterior, confirmado pelo apontador. */
   saldoRecebido: z.number().min(0).nullish(),
+  /** Offline: identificador gerado no tablet (reenvio não duplica). */
+  id: id.nullish(),
 });
 
 export const esquemaAjustarDivisao = z.object({ horasDisponiveis: z.number().min(0).max(24) });
@@ -85,6 +94,8 @@ const baseEvento = {
   maquinaId: id,
   horaOcorrencia: instante,
   justificativa: textoOpcional(1000),
+  /** Offline: números de etiqueta já usados pelo tablet (do bloco reservado), na ordem das etiquetas. */
+  sequencias: z.array(z.number().int().positive()).max(500).nullish(),
 };
 
 /** Fase 3: o material é identificado pela leitura da etiqueta do lote/mistura ou pelo número do lote. */
@@ -154,6 +165,8 @@ export type EventoEntrada = z.infer<typeof esquemaEvento>;
 export const esquemaFecharTurno = z.object({
   maquinas: z.array(z.object({ maquinaId: id, acao: z.enum(['DESLIGAR', 'SEGUE_RODANDO']) })).default([]),
   saldos: z.array(z.object({ divisaoId: id, quantidade: z.number().min(0) })).default([]),
+  /** Offline: hora do fechamento no relógio do tablet. */
+  horaFechamento: instante.nullish(),
 });
 export type FecharTurno = z.infer<typeof esquemaFecharTurno>;
 
@@ -252,4 +265,42 @@ export const esquemaRejeicao = z.object({
 export const esquemaEstorno = z.object({
   leitura: z.string().trim().min(1, 'Leia a etiqueta.').max(200),
   motivo: z.string().trim().min(5, 'Informe o motivo do estorno.').max(500),
+});
+
+// ---------- Fase 7: offline e sincronização (seção 11) ----------
+export const esquemaEstadoFila = z.object({
+  pendentes: z.array(z.object({ turnoId: id.nullish(), quantidade: z.number().int().min(0) })).max(50),
+});
+
+export const esquemaRecusado = z.object({
+  itemId: id,
+  turnoId: id.nullish(),
+  tipo: z.string().trim().min(1).max(40),
+  rota: z.string().trim().min(1).max(200),
+  corpo: z.record(z.string(), z.unknown()),
+  status: z.number().int(),
+  mensagem: z.string().max(2000),
+  criadoEm: instante,
+});
+
+export const esquemaDescarteRecusado = z.object({
+  justificativa: z.string().trim().min(5, 'Informe a justificativa do descarte.').max(500),
+});
+
+export const esquemaRelancado = z.object({ eventoId: id });
+
+export const esquemaImpressoesOffline = z.object({
+  itens: z
+    .array(
+      z.object({
+        codigo: z.string().trim().min(1).max(40),
+        layoutId: id.nullish(),
+        impressoraId: id.nullish(),
+        sucesso: z.boolean(),
+        mensagem: z.string().max(500).nullish(),
+        em: instante,
+      }),
+    )
+    .min(1)
+    .max(500),
 });

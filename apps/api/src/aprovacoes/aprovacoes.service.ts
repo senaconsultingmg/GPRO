@@ -266,6 +266,16 @@ export class AprovacoesService {
     }
     if (turno.apontadorId === usuario.id)
       throw proibido('Você não pode aprovar o relatório de um turno que você apontou.');
+    // P17 / seção 11: a fila de envio do tablet daquele turno precisa estar vazia.
+    const fila = await this.prisma.estadoFilaAparelho.aggregate({
+      where: { turnoId, pendentes: { gt: 0 } },
+      _sum: { pendentes: true },
+    });
+    if (fila._sum.pendentes) {
+      throw conflito(
+        `O relatório não pode ser aprovado: há ${fila._sum.pendentes} lançamento(s) deste turno aguardando envio no tablet.`,
+      );
+    }
     const pendentes = await this.prisma.aprovacao.count({ where: { turnoId, situacao: 'PENDENTE' } });
     const corrPend = await this.prisma.evento.count({ where: { turnoId, situacao: 'CORRECAO_PENDENTE' } });
     if (pendentes + corrPend > 0) {

@@ -188,6 +188,11 @@ export function ListaLancamentos({ turno }: { turno: TurnoDetalhe }) {
                   </Table.Td>
                   <Table.Td>
                     <Group gap={4}>
+                      {e.pendenteEnvio && (
+                        <Badge color="yellow" variant="outline">
+                          Aguardando envio
+                        </Badge>
+                      )}
                       {incorreto && <Badge color="red">Incorreto</Badge>}
                       {e.situacao === 'CORRECAO_PENDENTE' && <Badge color="yellow">Correção pendente</Badge>}
                       {corrige && <Badge color="teal">Corretivo</Badge>}
@@ -210,7 +215,7 @@ export function ListaLancamentos({ turno }: { turno: TurnoDetalhe }) {
                   </Table.Td>
                   {podeCorrigir && (
                     <Table.Td>
-                      {e.situacao === 'VALIDO' && (
+                      {e.situacao === 'VALIDO' && !e.pendenteEnvio && (
                         <Button size="xs" variant="light" onClick={() => setCorrigindo(e)}>
                           Corrigir
                         </Button>

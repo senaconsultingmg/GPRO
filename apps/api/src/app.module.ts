@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { configuracao } from './configuracao.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -43,6 +43,9 @@ import { AprovacoesController } from './aprovacoes/aprovacoes.controller.js';
 import { ApuracaoService } from './apuracao/apuracao.service.js';
 import { ApuracaoController } from './apuracao/apuracao.controller.js';
 import { Barramento } from './comum/barramento.js';
+import { OfflineService } from './offline/offline.service.js';
+import { OfflineController } from './offline/offline.controller.js';
+import { VerificarRelogio } from './offline/verificar-relogio.js';
 import { ManutencaoService } from './manutencao/manutencao.service.js';
 import { ManutencaoController } from './manutencao/manutencao.controller.js';
 import { PainelService } from './painel/painel.service.js';
@@ -80,6 +83,7 @@ import { IndicadoresController } from './indicadores/indicadores.controller.js';
     PainelController,
     IndicadoresController,
     ManutencaoController,
+    OfflineController,
   ],
   providers: [
     PrismaService,
@@ -106,8 +110,10 @@ import { IndicadoresController } from './indicadores/indicadores.controller.js';
     PainelService,
     IndicadoresService,
     ManutencaoService,
+    OfflineService,
     { provide: APP_GUARD, useClass: GuardaAcesso },
     { provide: APP_FILTER, useClass: FiltroErros },
+    { provide: APP_INTERCEPTOR, useClass: VerificarRelogio },
   ],
 })
 export class AppModule {}

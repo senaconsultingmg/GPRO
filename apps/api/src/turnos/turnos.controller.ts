@@ -18,6 +18,7 @@ import {
   esquemaAbrirTurno,
   esquemaAjustarDivisao,
   esquemaCriarDivisao,
+  esquemaDescarteRecusado,
   esquemaEvento,
   esquemaFecharTurno,
   esquemaLigarMaquina,
@@ -31,6 +32,18 @@ import { TurnosService } from './turnos.service.js';
 import { RelatorioService } from './relatorio.service.js';
 
 const disp = (d?: string) => (d || 'desconhecido').slice(0, 100);
+
+/**
+ * Seção 11 — hora do registro no relógio do tablet (lançamento feito offline e enviado depois).
+ * Aceita até 30 dias para trás e 1 dia para frente; fora disso, usa a hora do servidor.
+ */
+function horaRegistro(valor?: string): Date | undefined {
+  if (!valor) return undefined;
+  const d = new Date(valor);
+  const t = d.getTime();
+  if (Number.isNaN(t) || t < Date.now() - 30 * 86_400_000 || t > Date.now() + 86_400_000) return undefined;
+  return d;
+}
 
 @ApiTags('Turnos e apontamento')
 @ApiBearerAuth()
@@ -77,8 +90,9 @@ export class TurnosController {
     @Body(new ValidacaoZod(esquemaAbrirTurno)) dados: z.infer<typeof esquemaAbrirTurno>,
     @UsuarioAtual() usuario: UsuarioAutenticado,
     @Headers('x-dispositivo') dispositivo?: string,
+    @Headers('x-hora-registro') hora?: string,
   ) {
-    return this.servico.abrir(dados, usuario, disp(dispositivo));
+    return this.servico.abrir(dados, usuario, disp(dispositivo), horaRegistro(hora));
   }
 
   @Get(':id')
@@ -108,8 +122,9 @@ export class TurnosController {
     @Body(new ValidacaoZod(esquemaLigarMaquina)) dados: z.infer<typeof esquemaLigarMaquina>,
     @UsuarioAtual() usuario: UsuarioAutenticado,
     @Headers('x-dispositivo') dispositivo?: string,
+    @Headers('x-hora-registro') hora?: string,
   ) {
-    return this.servico.ligarMaquina(id, dados, usuario, disp(dispositivo));
+    return this.servico.ligarMaquina(id, dados, usuario, disp(dispositivo), horaRegistro(hora));
   }
 
   @Get(':id/divisoes/proposta')
@@ -131,8 +146,9 @@ export class TurnosController {
     @Body(new ValidacaoZod(esquemaCriarDivisao)) dados: z.infer<typeof esquemaCriarDivisao>,
     @UsuarioAtual() usuario: UsuarioAutenticado,
     @Headers('x-dispositivo') dispositivo?: string,
+    @Headers('x-hora-registro') hora?: string,
   ) {
-    return this.servico.criarDivisao(id, dados, usuario, disp(dispositivo));
+    return this.servico.criarDivisao(id, dados, usuario, disp(dispositivo), horaRegistro(hora));
   }
 
   @Put(':id/divisoes/:divisaoId')
@@ -154,8 +170,9 @@ export class TurnosController {
     @UsuarioAtual() usuario: UsuarioAutenticado,
     @Headers('x-dispositivo') dispositivo?: string,
     @Headers('x-posto') posto?: string,
+    @Headers('x-hora-registro') hora?: string,
   ) {
-    return this.servico.lancar(id, entrada, usuario, disp(dispositivo), posto ?? null);
+    return this.servico.lancar(id, entrada, usuario, disp(dispositivo), posto ?? null, horaRegistro(hora));
   }
 
   @Post(':id/fechar')
@@ -166,7 +183,19 @@ export class TurnosController {
     @Body(new ValidacaoZod(esquemaFecharTurno)) dados: FecharTurno,
     @UsuarioAtual() usuario: UsuarioAutenticado,
     @Headers('x-dispositivo') dispositivo?: string,
+    @Headers('x-hora-registro') hora?: string,
   ) {
-    return this.servico.fechar(id, dados, usuario, disp(dispositivo));
+    return this.servico.fechar(id, dados, usuario, disp(dispositivo), horaRegistro(hora));
+  }
+
+  @Post(':id/liberar-aparelho')
+  @Permissao('aprovacoes.decidir')
+  @HttpCode(200)
+  liberarAparelho(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ValidacaoZod(esquemaDescarteRecusado)) dados: z.infer<typeof esquemaDescarteRecusado>,
+    @UsuarioAtual() usuario: UsuarioAutenticado,
+  ) {
+    return this.servico.liberarAparelho(id, dados.justificativa, usuario);
   }
 }

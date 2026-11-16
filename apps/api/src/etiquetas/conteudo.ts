@@ -1,11 +1,4 @@
-import {
-  elementosGs1,
-  formatarDataHora,
-  gs1ComParenteses,
-  mmParaPontos,
-  ROTULO_UNIDADE,
-  type Unidade,
-} from '@apontamento/shared';
+import { formatarDataHora, mmParaPontos, valoresImpressao } from '@apontamento/shared';
 import type { Prisma } from '../generated/prisma/client.js';
 
 export const INCLUIR_ETIQUETA = {
@@ -42,64 +35,8 @@ export const INCLUIR_ETIQUETA = {
 
 export type EtiquetaCompleta = Prisma.EtiquetaGetPayload<{ include: typeof INCLUIR_ETIQUETA }>;
 
-const n = (v: number, casas = 3) => v.toLocaleString('pt-BR', { maximumFractionDigits: casas });
-
-/** Valores substituídos no modelo ZPL para uma etiqueta. */
-export function valoresImpressao(
-  e: EtiquetaCompleta,
-  opcoes: { segundaVia: boolean; larguraMm: number; alturaMm: number; dpi: number },
-): Record<string, string> {
-  const d = (e.dados ?? {}) as Record<string, string | number | null>;
-  const dataHora = formatarDataHora(e.emitidaEm);
-  const peso = e.pesoKg ?? (e.unidade === 'KG' ? e.quantidade : null);
-  const gs1 = gs1ComParenteses(
-    elementosGs1({
-      codigo: e.codigo,
-      codigoProduto: e.produto.codigo,
-      quantidade: e.quantidade,
-      unidade: e.unidade as Unidade,
-      data: e.emitidaEm,
-      lote: e.lote?.numero ?? null,
-    }),
-  );
-  const texto = (v: unknown) => (v === null || v === undefined ? '' : String(v));
-  return {
-    ...Object.fromEntries(Object.entries(d).map(([k, v]) => [k, texto(v)])),
-    codigo: e.codigo,
-    gs1,
-    segundaVia: opcoes.segundaVia ? '2ª VIA' : '',
-    avulso: e.avulso ? 'AVULSO' : '',
-    larguraPontos: String(mmParaPontos(opcoes.larguraMm, opcoes.dpi)),
-    alturaPontos: String(mmParaPontos(opcoes.alturaMm, opcoes.dpi)),
-    data: dataHora.slice(0, 10),
-    hora: dataHora.slice(11),
-    dataHora,
-    responsavel: e.responsavel.login,
-    turno: e.turno ? `${e.turno.equipe.letra}-${e.turno.horarioTurno.nome}` : texto(d.turno),
-    produto: e.produto.codigo,
-    produtoDescricao: e.produto.descricao,
-    material: e.produto.codigo,
-    materialDescricao: e.produto.descricao,
-    quantidade: n(e.quantidade),
-    unidade: ROTULO_UNIDADE[e.unidade as Unidade],
-    quantidadeTexto:
-      d.quantidadePecas != null
-        ? `${n(Number(d.quantidadePecas))} pç`
-        : `${n(e.quantidade)} ${ROTULO_UNIDADE[e.unidade as Unidade]}`,
-    peso: peso != null ? n(peso) : '',
-    pesoTexto: peso != null ? `${n(peso)} kg` : '',
-    lote: e.lote?.numero ?? texto(d.lote),
-    fornecedor: e.lote?.fornecedor ?? texto(d.fornecedor),
-    notaFiscal: e.lote?.notaFiscal ?? texto(d.notaFiscal),
-    fluidez: e.lote?.indiceFluidez != null ? n(e.lote.indiceFluidez) : texto(d.fluidez),
-    cor: e.lote?.cor ?? e.produto.cor ?? texto(d.cor),
-    op: e.divisao ? (e.divisao.ordem.numeroErp ?? `nº ${e.divisao.ordem.numeroInterno}`) : texto(d.op),
-    divisao: e.divisao?.codigo ?? texto(d.divisao),
-    maquina: e.divisao?.maquina.codigo ?? texto(d.maquina),
-    conjunto:
-      e.numeroNoLancamento && e.totalNoLancamento ? `${e.numeroNoLancamento} de ${e.totalNoLancamento}` : '',
-  };
-}
+/** Valores substituídos no modelo ZPL: a mesma função do tablet (impressão offline). */
+export { valoresImpressao };
 
 /** Dados fictícios para a impressão de teste de um layout. */
 export function valoresTeste(opcoes: {

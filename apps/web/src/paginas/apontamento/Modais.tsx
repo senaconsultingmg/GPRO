@@ -15,7 +15,9 @@ import {
 } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatarDataHora, ROTULO_UNIDADE, type TipoMaquina, type Unidade } from '@apontamento/shared';
-import { api } from '../../api/cliente';
+import { api, ErroApi } from '../../api/cliente';
+import * as acoes from '../../offline/acoes';
+import { semConexao } from '../../offline/pacote';
 import { useLista } from '../../componentes/PaginaCadastro';
 import { AlertaErroApi, fmtNumero, notificarSucesso } from '../../componentes/utilitarios';
 import { CampoHora } from './CampoHora';
@@ -51,7 +53,16 @@ export function LigarMaquina({
   const [idEvento] = useState(() => crypto.randomUUID());
   const disp = useQuery({
     queryKey: ['turno', turno.id, 'disponiveis'],
-    queryFn: () => api.get<MaquinaDisponivel[]>(`/turnos/${turno.id}/maquinas-disponiveis`),
+    queryFn: async (): Promise<MaquinaDisponivel[]> => {
+      try {
+        return await api.get<MaquinaDisponivel[]>(`/turnos/${turno.id}/maquinas-disponiveis`);
+      } catch (e) {
+        // Sem servidor (ou turno ainda só no tablet): monta com o pacote.
+        if (semConexao(e) || (e instanceof ErroApi && e.status === 404))
+          return acoes.maquinasDisponiveisLocal(turno);
+        throw e;
+      }
+    },
   });
   const [escolhida, setEscolhida] = useState<MaquinaDisponivel | null>(null);
   const [horaEditadaRef] = useState({ editada: false });
@@ -70,16 +81,16 @@ export function LigarMaquina({
   };
   const ligar = useMutation({
     mutationFn: () =>
-      api.post(`/turnos/${turno.id}/maquinas`, {
+      acoes.ligarMaquina(turno.id, {
         eventoId: idEvento,
         maquinaId: escolhida!.maquina.id,
-        rodadaId,
+        rodadaId: rodadaId!,
         horaOcorrencia: horaExata ?? (horaEditadaRef.editada ? deCampoHora(hora) : new Date().toISOString()),
         iniciarParadaMotivoId: iniciarParada ? escolhida!.sugestaoParadaMotivoId : null,
       }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       cliente.invalidateQueries({ queryKey: ['turno', turno.id] });
-      notificarSucesso(`Máquina ${escolhida!.maquina.codigo} ligada.`);
+      if (r.enviado) notificarSucesso(`Máquina ${escolhida!.maquina.codigo} ligada.`);
       aoLigar(escolhida!.maquina.id);
     },
   });
@@ -187,6 +198,8 @@ export function LigarMaquina({
 }
 
 interface Proposta {
+  /** Código calculado no tablet sem servidor: o definitivo vem na sincronização. */
+  provisoria?: boolean;
   codigo: string;
   sequencial: number;
   horasSugeridas: number;
@@ -220,24 +233,36 @@ function CartaoDivisao({
   const [saldoRecebido, setSaldoRecebido] = useState<number | string | null>(null);
   const proposta = useQuery({
     queryKey: ['turno', turno.id, 'proposta', op.id, horas],
-    queryFn: () =>
-      api.get<Proposta>(
-        `/turnos/${turno.id}/divisoes/proposta?rodadaOpId=${op.id}&maquinaId=${maquina.maquinaId}${horas !== null ? `&horas=${horas}` : ''}`,
-      ),
+    queryFn: async (): Promise<Proposta> => {
+      try {
+        return await api.get<Proposta>(
+          `/turnos/${turno.id}/divisoes/proposta?rodadaOpId=${op.id}&maquinaId=${maquina.maquinaId}${horas !== null ? `&horas=${horas}` : ''}`,
+        );
+      } catch (e) {
+        if (semConexao(e) || (e instanceof ErroApi && (e.status === 404 || e.status === 422))) {
+          return acoes.propostaLocal(turno, maquina, op, horas);
+        }
+        throw e;
+      }
+    },
     placeholderData: (anterior) => anterior,
   });
   const p = proposta.data;
   const criar = useMutation({
     mutationFn: () =>
-      api.post(`/turnos/${turno.id}/divisoes`, {
-        rodadaOpId: op.id,
-        maquinaId: maquina.maquinaId,
-        horasDisponiveis: horas ?? p?.horasDisponiveis,
-        saldoRecebido: p && p.saldoSoltoPendente > 0 ? Number(saldoRecebido ?? p.saldoSoltoPendente) : null,
-      }),
-    onSuccess: () => {
+      acoes.criarDivisao(
+        turno.id,
+        {
+          rodadaOpId: op.id,
+          maquinaId: maquina.maquinaId,
+          horasDisponiveis: horas ?? p?.horasDisponiveis,
+          saldoRecebido: p && p.saldoSoltoPendente > 0 ? Number(saldoRecebido ?? p.saldoSoltoPendente) : null,
+        },
+        { codigo: p!.codigo, meta: p!.meta },
+      ),
+    onSuccess: (r) => {
       cliente.invalidateQueries({ queryKey: ['turno', turno.id] });
-      notificarSucesso(`Divisão ${p?.codigo} criada.`);
+      if (r.enviado) notificarSucesso(`Divisão ${r.corpo.codigo} criada.`);
     },
   });
   if (!p) return <Card withBorder>Carregando proposta…</Card>;
@@ -248,6 +273,11 @@ function CartaoDivisao({
         <Group justify="space-between">
           <Text size="xl" fw={700}>
             {p.codigo}
+            {p.provisoria && (
+              <Badge ml="xs" color="yellow" variant="light">
+                provisório
+              </Badge>
+            )}
           </Text>
           <Badge size="lg">{p.ordem.produto.codigo}</Badge>
         </Group>
@@ -332,27 +362,27 @@ export function Fechamento({
 }: {
   turno: TurnoDetalhe;
   aoFechar: () => void;
-  aoConcluir: () => void;
+  aoConcluir: (enviado: boolean) => void;
 }) {
   const cliente = useQueryClient();
   const ligadas = turno.maquinas.filter((m) => m.estado.situacao !== 'DESLIGADA');
-  const [acoes, setAcoes] = useState<Record<string, string>>({});
+  const [decisoes, setDecisoes] = useState<Record<string, string>>({});
   const [saldos, setSaldos] = useState<Record<string, number | string>>({});
   const fechar = useMutation({
     mutationFn: () =>
-      api.post(`/turnos/${turno.id}/fechar`, {
-        maquinas: Object.entries(acoes).map(([maquinaId, acao]) => ({ maquinaId, acao })),
+      acoes.fecharTurno(turno.id, {
+        maquinas: Object.entries(decisoes).map(([maquinaId, acao]) => ({ maquinaId, acao })),
         saldos: Object.entries(saldos)
           .map(([divisaoId, q]) => ({ divisaoId, quantidade: Number(q) || 0 }))
           .filter((s) => s.quantidade > 0),
       }),
-    onSuccess: () => {
+    onSuccess: (r) => {
       cliente.invalidateQueries({ queryKey: ['turno'] });
-      notificarSucesso('Turno fechado.');
-      aoConcluir();
+      if (r.enviado) notificarSucesso('Turno fechado.');
+      aoConcluir(r.enviado);
     },
   });
-  const faltam = ligadas.filter((m) => !acoes[m.maquinaId]);
+  const faltam = ligadas.filter((m) => !decisoes[m.maquinaId]);
   return (
     <Stack>
       {ligadas.length === 0 && <Text c="dimmed">Nenhuma máquina ligada.</Text>}
@@ -370,8 +400,8 @@ export function Fechamento({
             <SegmentedControl
               size="lg"
               fullWidth
-              value={acoes[m.maquinaId] ?? ''}
-              onChange={(v) => setAcoes({ ...acoes, [m.maquinaId]: v })}
+              value={decisoes[m.maquinaId] ?? ''}
+              onChange={(v) => setDecisoes({ ...decisoes, [m.maquinaId]: v })}
               data={[
                 { value: 'DESLIGAR', label: 'Desligar' },
                 { value: 'SEGUE_RODANDO', label: 'Segue rodando' },

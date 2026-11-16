@@ -16,3 +16,4 @@ export * from './modelos-zpl.js';
 export * from './esquemas-paineis.js';
 export * from './manutencao.js';
 export * from './esquemas-manutencao.js';
+export * from './offline.js';

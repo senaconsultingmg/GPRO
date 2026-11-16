@@ -10,7 +10,9 @@ interface Preparacao {
 }
 
 /** Envia o ZPL ao agente de impressão da rede local. */
-async function enviarAoAgente(p: Preparacao): Promise<{ sucesso: boolean; mensagem: string | null }> {
+export async function enviarAoAgente(
+  p: Pick<Preparacao, 'zpl' | 'impressora'>,
+): Promise<{ sucesso: boolean; mensagem: string | null }> {
   const { agenteUrl, agenteToken } = lerPosto();
   try {
     const r = await fetch(`${agenteUrl.replace(/\/$/, '')}/imprimir`, {

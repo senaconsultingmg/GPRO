@@ -1,6 +1,6 @@
 /** Cliente HTTP da API com renovação automática do token de acesso. */
 import { lerPosto } from './posto';
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
+export const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
 
 const CHAVE_ACESSO = 'apontamento.tokenAcesso';
 const CHAVE_RENOVACAO = 'apontamento.tokenRenovacao';
@@ -70,7 +70,7 @@ export function definirAoExpirarSessao(f: () => void): void {
 /** Resultado da renovação: renovado, recusado pelo servidor ou falha de rede (sessão mantida). */
 type Renovacao = 'renovado' | 'recusado' | 'falha';
 let renovacaoEmAndamento: Promise<Renovacao> | null = null;
-async function renovar(): Promise<Renovacao> {
+export async function renovar(): Promise<Renovacao> {
   const tokenRenovacao = tokens.renovacao();
   if (!tokenRenovacao) return 'recusado';
   renovacaoEmAndamento ??= (async () => {

@@ -234,6 +234,11 @@ model Usuario {
   etapasExecutadas       EtapaOrdemServico[]     @relation("EtapaExecutor")
   modelosSequencia       ModeloSequencia[]
 
+  blocosEtiqueta   BlocoEtiqueta[]
+  recusas          RecusaSincronizacao[] @relation("RecusaUsuario")
+  recusasDecididas RecusaSincronizacao[] @relation("RecusaDecididoPor")
+  alertasRelogio   AlertaRelogio[]
+
   @@map("usuario")
 }
 
@@ -588,6 +593,7 @@ model Dispositivo {
 
   sequencia SequenciaDispositivo?
   etiquetas Etiqueta[]
+  blocos    BlocoEtiqueta[]
 
   @@map("dispositivo")
 }
@@ -666,35 +672,39 @@ model RodadaOp {
 }
 
 model TurnoApontamento {
-  id               String        @id @default(uuid()) @db.Uuid
-  apontadorId      String        @map("apontador_id") @db.Uuid
-  data             DateTime      @db.Date
-  horarioTurnoId   String        @map("horario_turno_id") @db.Uuid
-  equipeId         String        @map("equipe_id") @db.Uuid
-  inicioNominal    DateTime      @map("inicio_nominal") @db.Timestamptz(3)
-  fimNominal       DateTime      @map("fim_nominal") @db.Timestamptz(3)
-  abertoEm         DateTime      @default(now()) @map("aberto_em") @db.Timestamptz(3)
-  fechadoEm        DateTime?     @map("fechado_em") @db.Timestamptz(3)
-  situacao         SituacaoTurno @default(ABERTO)
-  dispositivo      String
-  aprovadoEm       DateTime?     @map("aprovado_em") @db.Timestamptz(3)
-  aprovadoPorId    String?       @map("aprovado_por_id") @db.Uuid
-  apuradoEm        DateTime?     @map("apurado_em") @db.Timestamptz(3)
-  apuradoPorId     String?       @map("apurado_por_id") @db.Uuid
-  exportadoEm      DateTime?     @map("exportado_em") @db.Timestamptz(3)
-  exportacaoId     String?       @map("exportacao_id") @db.Uuid
+  id                    String        @id @default(uuid()) @db.Uuid
+  apontadorId           String        @map("apontador_id") @db.Uuid
+  data                  DateTime      @db.Date
+  horarioTurnoId        String        @map("horario_turno_id") @db.Uuid
+  equipeId              String        @map("equipe_id") @db.Uuid
+  inicioNominal         DateTime      @map("inicio_nominal") @db.Timestamptz(3)
+  fimNominal            DateTime      @map("fim_nominal") @db.Timestamptz(3)
+  abertoEm              DateTime      @default(now()) @map("aberto_em") @db.Timestamptz(3)
+  fechadoEm             DateTime?     @map("fechado_em") @db.Timestamptz(3)
+  situacao              SituacaoTurno @default(ABERTO)
+  dispositivo           String
+  aprovadoEm            DateTime?     @map("aprovado_em") @db.Timestamptz(3)
+  aprovadoPorId         String?       @map("aprovado_por_id") @db.Uuid
+  apuradoEm             DateTime?     @map("apurado_em") @db.Timestamptz(3)
+  apuradoPorId          String?       @map("apurado_por_id") @db.Uuid
+  exportadoEm           DateTime?     @map("exportado_em") @db.Timestamptz(3)
+  exportacaoId          String?       @map("exportacao_id") @db.Uuid
   /// Última devolução do PCP ao líder (divergência na apuração).
-  devolvidoEm      DateTime?     @map("devolvido_em") @db.Timestamptz(3)
-  parecerDevolucao String?       @map("parecer_devolucao")
+  devolvidoEm           DateTime?     @map("devolvido_em") @db.Timestamptz(3)
+  /// Seção 11: o líder liberou continuar o turno em outro tablet (fila do anterior não enviada).
+  trocaAparelhoLiberada Boolean       @default(false) @map("troca_aparelho_liberada")
+  parecerDevolucao      String?       @map("parecer_devolucao")
 
-  apontador    Usuario        @relation(fields: [apontadorId], references: [id])
-  horarioTurno HorarioTurno   @relation(fields: [horarioTurnoId], references: [id])
-  equipe       Equipe         @relation(fields: [equipeId], references: [id])
+  apontador    Usuario               @relation(fields: [apontadorId], references: [id])
+  horarioTurno HorarioTurno          @relation(fields: [horarioTurnoId], references: [id])
+  equipe       Equipe                @relation(fields: [equipeId], references: [id])
   maquinas     MaquinaTurno[]
   divisoes     DivisaoOp[]
   eventos      Evento[]
   aprovacoes   Aprovacao[]
   etiquetas    Etiqueta[]
+  recusas      RecusaSincronizacao[]
+  estadosFila  EstadoFilaAparelho[]
 
   @@index([apontadorId, situacao])
   @@map("turno_apontamento")
@@ -1196,4 +1206,94 @@ model ModeloSequencia {
   criadoPor Usuario @relation(fields: [criadoPorId], references: [id])
 
   @@map("modelo_sequencia")
+}
+
+// ---------- Fase 7: offline e sincronização (seção 11) ----------
+
+/// Faixa de números de etiqueta reservada por um tablet para usar sem conexão.
+model BlocoEtiqueta {
+  id            String   @id @default(uuid()) @db.Uuid
+  /// Posto (dispositivo do cadastro) dono da sequência.
+  dispositivoId String   @map("dispositivo_id") @db.Uuid
+  /// Identificador do aparelho (tablet) que reservou.
+  aparelho      String
+  inicio        Int
+  fim           Int
+  usuarioId     String   @map("usuario_id") @db.Uuid
+  criadoEm      DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+
+  dispositivo Dispositivo @relation(fields: [dispositivoId], references: [id])
+  usuario     Usuario     @relation(fields: [usuarioId], references: [id])
+
+  @@index([dispositivoId, inicio])
+  @@map("bloco_etiqueta")
+}
+
+enum SituacaoRecusa {
+  PENDENTE
+  DESCARTADO
+  RELANCADO
+}
+
+/// Lançamento que o servidor recusou na sincronização; nada é descartado em silêncio.
+model RecusaSincronizacao {
+  id                String         @id @default(uuid()) @db.Uuid
+  /// Identificador do item da fila no tablet (reenvio do aviso não duplica).
+  itemId            String         @unique @map("item_id") @db.Uuid
+  turnoId           String?        @map("turno_id") @db.Uuid
+  tipo              String
+  rota              String
+  corpo             Json
+  status            Int
+  mensagem          String
+  /// Hora em que o lançamento foi feito no tablet.
+  criadoEm          DateTime       @map("criado_em") @db.Timestamptz(3)
+  recebidoEm        DateTime       @default(now()) @map("recebido_em") @db.Timestamptz(3)
+  usuarioId         String         @map("usuario_id") @db.Uuid
+  aparelho          String
+  situacao          SituacaoRecusa @default(PENDENTE)
+  decididoEm        DateTime?      @map("decidido_em") @db.Timestamptz(3)
+  decididoPorId     String?        @map("decidido_por_id") @db.Uuid
+  justificativa     String?
+  eventoRelancadoId String?        @map("evento_relancado_id") @db.Uuid
+
+  turno       TurnoApontamento? @relation(fields: [turnoId], references: [id])
+  usuario     Usuario           @relation("RecusaUsuario", fields: [usuarioId], references: [id])
+  decididoPor Usuario?          @relation("RecusaDecididoPor", fields: [decididoPorId], references: [id])
+
+  @@index([situacao])
+  @@map("recusa_sincronizacao")
+}
+
+/// Último estado da fila informado por um tablet para um turno.
+model EstadoFilaAparelho {
+  id           String   @id @default(uuid()) @db.Uuid
+  aparelho     String
+  turnoId      String   @map("turno_id") @db.Uuid
+  pendentes    Int
+  usuarioId    String   @map("usuario_id") @db.Uuid
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  turno TurnoApontamento @relation(fields: [turnoId], references: [id])
+
+  @@unique([aparelho, turnoId])
+  @@map("estado_fila_aparelho")
+}
+
+/// Relógio do tablet diferente do servidor além do parâmetro: alerta ao superusuário.
+model AlertaRelogio {
+  id           String   @id @default(uuid()) @db.Uuid
+  aparelho     String   @unique
+  usuarioId    String?  @map("usuario_id") @db.Uuid
+  /// Diferença mais recente em segundos (positivo: tablet adiantado).
+  diferencaSeg Int      @map("diferenca_seg")
+  maiorSeg     Int      @map("maior_seg")
+  ocorrencias  Int      @default(1)
+  primeiraEm   DateTime @default(now()) @map("primeira_em") @db.Timestamptz(3)
+  ultimaEm     DateTime @default(now()) @map("ultima_em") @db.Timestamptz(3)
+  resolvido    Boolean  @default(false)
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@map("alerta_relogio")
 }

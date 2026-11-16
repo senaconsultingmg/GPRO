@@ -2,6 +2,9 @@
 
 Sistema web de apontamento de produção para fábrica de transformação de plásticos (injetoras, sopradoras e extrusoras). Especificação completa em [`docs/ESPECIFICACAO.md`](docs/ESPECIFICACAO.md); andamento em [`docs/PROGRESSO.md`](docs/PROGRESSO.md); decisões em [`docs/DECISOES.md`](docs/DECISOES.md).
 
+- **Instalação** em servidor local ou nuvem, tablets, agente de impressão, backup e restauração: [`docs/INSTALACAO.md`](docs/INSTALACAO.md).
+- **Manual rápido por perfil:** [`docs/MANUAL.md`](docs/MANUAL.md).
+
 ## Subir com Docker
 
 ```bash
@@ -79,5 +82,6 @@ Os bancos de teste podem ser trocados com `DATABASE_URL_TESTE` e `DATABASE_URL_E
 apps/api         API NestJS + Prisma (PostgreSQL)
 apps/web         front-end React + Vite + Mantine
 packages/shared  esquemas Zod, permissões e regras puras (compatibilidade, PH, escala)
-docs/            especificação, progresso e decisões
+docs/            especificação, progresso, decisões, guia de instalação e manual
+scripts/         backup e restauração do banco
 ```

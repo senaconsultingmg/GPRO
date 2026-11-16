@@ -8,3 +8,4 @@ apps/web/test-results/
 apps/web/playwright-report/
 .vite/
 apps/web/impressora-simulada/
+backups/

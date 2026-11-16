@@ -30,6 +30,7 @@ import {
   type TipoProduto,
 } from '@apontamento/shared';
 import { api } from '../api/cliente';
+import { consultarComCache, lotesDoPacote } from '../offline/pacote';
 import { EstornoRecebimento } from '../componentes/EstornoRecebimento';
 import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
 import { imprimirComAviso } from '../componentes/notificarImpressao';
@@ -62,7 +63,10 @@ export interface Lote {
 export const useLotes = (comSaldo = false) =>
   useQuery({
     queryKey: ['lotes', comSaldo],
-    queryFn: () => api.get<Lote[]>(`/materia-prima/lotes${comSaldo ? '?comSaldo=true' : ''}`),
+    queryFn: () =>
+      consultarComCache(`lotes:${comSaldo}`, () =>
+        api.get<Lote[]>(`/materia-prima/lotes${comSaldo ? '?comSaldo=true' : ''}`),
+      ).catch(async () => (await lotesDoPacote()) as unknown as Lote[]),
   });
 
 type Resposta = { lote: { numero: string }; etiquetas: { id: string; codigo: string }[] };

@@ -34,26 +34,53 @@ export interface NovaEtiqueta {
 
 /**
  * Emite etiquetas com códigos sequenciais do posto. O contador é por dispositivo e nunca volta:
- * códigos não são reutilizados, nem após cancelamento.
+ * códigos não são reutilizados, nem após cancelamento. Offline (seção 11), o tablet informa os
+ * números que já usou de um bloco reservado por ele; o servidor confere e grava os mesmos.
  */
 export async function emitirEtiquetas(
   tx: Transacao,
   postoId: string | null | undefined,
   responsavelId: string,
   itens: NovaEtiqueta[],
+  opcoes: { sequencias?: number[] | null; aparelho?: string | null; emitidaEm?: Date | null } = {},
 ) {
   if (itens.length === 0) return [];
   const posto = await obterPosto(tx, postoId);
-  const seq = await tx.sequenciaDispositivo.upsert({
-    where: { dispositivoId: posto.id },
-    create: { dispositivoId: posto.id, ultimo: itens.length },
-    update: { ultimo: { increment: itens.length } },
-  });
-  const primeira = seq.ultimo - itens.length + 1;
+  let sequencias: number[];
+  if (opcoes.sequencias?.length) {
+    if (opcoes.sequencias.length !== itens.length) {
+      throw new ErroNegocio(
+        `As etiquetas impressas no tablet (${opcoes.sequencias.length}) não conferem com as do lançamento (${itens.length}).`,
+      );
+    }
+    const blocos = await tx.blocoEtiqueta.findMany({ where: { dispositivoId: posto.id } });
+    for (const s of opcoes.sequencias) {
+      const bloco = blocos.find((b) => s >= b.inicio && s <= b.fim);
+      if (!bloco || (opcoes.aparelho && bloco.aparelho !== opcoes.aparelho)) {
+        throw new ErroNegocio(
+          `O número ${codigoEtiqueta(posto.prefixo, s)} não pertence a um bloco reservado por este tablet.`,
+        );
+      }
+    }
+    const usadas = await tx.etiqueta.findMany({
+      where: { dispositivoId: posto.id, sequencia: { in: opcoes.sequencias } },
+      select: { codigo: true },
+    });
+    if (usadas.length) throw new ErroNegocio(`Etiqueta ${usadas[0].codigo} já foi usada.`);
+    sequencias = opcoes.sequencias;
+  } else {
+    const seq = await tx.sequenciaDispositivo.upsert({
+      where: { dispositivoId: posto.id },
+      create: { dispositivoId: posto.id, ultimo: itens.length },
+      update: { ultimo: { increment: itens.length } },
+    });
+    const primeira = seq.ultimo - itens.length + 1;
+    sequencias = itens.map((_, i) => primeira + i);
+  }
   const criadas = [];
   for (let i = 0; i < itens.length; i++) {
     const it = itens[i];
-    const sequencia = primeira + i;
+    const sequencia = sequencias[i];
     criadas.push(
       await tx.etiqueta.create({
         data: {
@@ -74,11 +101,36 @@ export async function emitirEtiquetas(
           numeroNoLancamento: it.numeroNoLancamento ?? null,
           totalNoLancamento: it.totalNoLancamento ?? null,
           dados: (it.dados ?? {}) as Prisma.InputJsonValue,
+          ...(opcoes.emitidaEm ? { emitidaEm: opcoes.emitidaEm } : {}),
         },
       }),
     );
   }
   return criadas;
+}
+
+/**
+ * Reserva um bloco de números do posto para o tablet usar offline. O contador do servidor pula
+ * para depois do bloco, então etiquetas emitidas online nunca caem dentro dele.
+ */
+export async function reservarBloco(
+  tx: Transacao,
+  postoId: string | null | undefined,
+  aparelho: string,
+  usuarioId: string,
+  tamanho: number,
+) {
+  const posto = await obterPosto(tx, postoId);
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sequencia|${posto.id}`}))`;
+  const seq = await tx.sequenciaDispositivo.upsert({
+    where: { dispositivoId: posto.id },
+    create: { dispositivoId: posto.id, ultimo: 0 },
+    update: {},
+  });
+  const inicio = seq.ultimo + 1;
+  const fim = inicio + tamanho - 1;
+  await tx.sequenciaDispositivo.update({ where: { dispositivoId: posto.id }, data: { ultimo: fim } });
+  return tx.blocoEtiqueta.create({ data: { dispositivoId: posto.id, aparelho, inicio, fim, usuarioId } });
 }
 
 /** Próximo número de lote interno: L + AAMMDD + "-" + sequência do dia (ex.: L261115-003). */

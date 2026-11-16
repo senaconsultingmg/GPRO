@@ -296,3 +296,36 @@ Segunda rodada (pedido do usuário: OS com etapas por especialidade):
 - Tecnicos de exemplo: elétrica, mecânica (+ hidráulica), ferramentaria, setup e predial; `manutencao@exemplo.com.br` é o controlador.
 - Toda ação (criação, triagem, recusa, conversão, inclusão/ajuste/cancelamento de etapa, início, conclusão, encerramento, modelo) é auditada.
 - A tela "Minhas etapas" é pensada para tablet: cartões com botões grandes.
+
+## Fase 7 — Offline e implantação (16/11/2026)
+
+### Respostas do usuário às dúvidas do plano (todas confirmadas)
+
+| #   | Dúvida                           | Decisão                                                                                                                                                                                                                               |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Numeração das etiquetas offline  | Cada tablet reserva, quando online, um bloco de números do seu posto (parâmetro `tamanho_bloco_etiquetas`, padrão 1.000) e reserva outro quando restam menos de 20%. O contador do servidor pula para depois de cada bloco reservado. |
+| 2   | Código da divisão criada offline | O tablet calcula o próximo número e o mostra como "provisório". Se outro aparelho criou a mesma divisão antes, o servidor numera de novo; a etiqueta já impressa continua rastreável pelo lançamento.                                 |
+| 3   | Dados no aparelho                | Pacote atualizado ao abrir o apontamento, ao salvar o posto e a cada 15 minutos com conexão.                                                                                                                                          |
+| 4   | Sessão vencida offline           | O apontador continua lançando; ao reconectar a sessão é renovada (ou ele entra de novo) e a fila sobe. A fila guarda quem lançou e só é enviada com o mesmo usuário logado.                                                           |
+| 5   | Lançamentos recusados            | Lista para o apontador (os próprios) e o líder (todos): relançar corrigido (formulário já preenchido) ou descartar com justificativa; tudo auditado.                                                                                  |
+| 6   | Um turno, um dispositivo         | Outro tablet só continua o turno se o anterior informou fila vazia; o líder pode liberar a troca com justificativa. A troca é auditada.                                                                                               |
+| 7   | Relógio divergente               | Alerta acima de 5 minutos (parâmetro `alerta_diferenca_relogio_min`), em tela própria do superusuário.                                                                                                                                |
+| 8   | Backup                           | Serviço `backup` no compose: diário às 02h00, mantém 14 arquivos, script de restauração.                                                                                                                                              |
+| 9   | Nuvem                            | Guia com Caddy (HTTPS automático); agente de impressão em computador da fábrica.                                                                                                                                                      |
+
+### Como o tablet trabalha
+
+- **Tudo passa pela fila do aparelho** (IndexedDB, via Dexie): abrir turno, ligar máquina, criar divisão, lançar e fechar. Com conexão e fila vazia, o item é enviado na hora e a resposta volta para a tela (erros de validação aparecem no formulário, como antes). Sem conexão, o item fica na fila e sobe sozinho, na ordem, ao voltar a rede (tentativa a cada 5 s após falha e a cada 30 s em segundo plano). O tablet informa ao servidor quantos itens de cada turno aguardam envio.
+- **Sem duplicidade:** cada item tem identificador gerado no tablet. Abrir turno, ligar máquina, criar divisão e lançar aceitam o identificador do tablet e devolvem o registro existente quando ele já foi recebido; o fechamento repetido de um turno já fechado pelo mesmo apontador não falha.
+- **Horas:** o tablet envia a hora do registro (`x-hora-registro`) e a hora atual (`x-hora-dispositivo`). A hora do registro do lançamento e a data de emissão da etiqueta são as do tablet; o servidor grava também quando recebeu (`recebido_em`). Horas do tablet fora de 30 dias para trás ou 1 dia para frente são ignoradas (vale a do servidor).
+- **Projeção do turno:** a tela do apontador mostra a última cópia do turno vinda do servidor mais os itens da fila (máquinas, divisões, lançamentos com a marca "Aguardando envio", estado das máquinas recalculado com a mesma função do servidor). Correção só é possível depois que o lançamento subir.
+- **Etiquetas:** o cálculo das etiquetas de cada lançamento (`planejarEtiquetas`) e os valores impressos (`valoresImpressao`) passaram para o pacote compartilhado; servidor e tablet usam as mesmas funções. O tablet informa os números usados (`sequencias`); o servidor confere se pertencem a um bloco reservado por aquele tablet e se não foram usados. Com conexão, a impressão segue pela API (como antes); sem conexão, o tablet monta o ZPL com o layout guardado e envia direto ao agente; o resultado é informado ao servidor depois que o lançamento sobe.
+- **Lote de extrusado:** passou a ter número determinado pela divisão (`LE-<código da divisão>`), para a etiqueta impressa offline trazer o mesmo lote gravado pelo servidor.
+- **Listas e consultas** usadas no apontamento guardam a última resposta no tablet; sem servidor, usam essa cópia ou o pacote.
+- **Aprovação (P17):** o relatório do turno não é aprovado enquanto o tablet informar itens daquele turno na fila. O fechamento feito offline só chega ao servidor no fim da fila, então o turno continua aberto lá até tudo subir.
+- **Aplicativo instalável:** `vite-plugin-pwa` (Workbox) guarda as telas no aparelho; a API nunca entra no cache do navegador. Ícones 192 e 512 px gerados a partir do ícone do sistema.
+
+### Implantação
+
+- Backup com `pg_dump -Fc` em pasta montada do servidor (`BACKUP_PASTA`), retenção por quantidade de arquivos (`RETENCAO_DIAS`). Restauração por `scripts/restaurar.sh` (para API e site, recria o banco, `pg_restore`, sobe de novo).
+- Rota do tempo real (`/api/painel/fluxo`) no nginx sem buffer e com conexão longa.

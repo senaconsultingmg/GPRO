@@ -17,6 +17,8 @@ import {
   type EventoTempo,
   type TipoMaquina,
   type TipoProduto,
+  numeroLoteExtrusao,
+  planejarEtiquetas,
 } from '@apontamento/shared';
 import { Prisma, type TurnoApontamento } from '../generated/prisma/client.js';
 import type { Transacao } from '../prisma/prisma.service.js';
@@ -24,7 +26,7 @@ import { ParametrosService } from '../parametros/parametros.service.js';
 import { conflito, ErroNegocio, naoEncontrado } from '../comum/erros.js';
 import type { UsuarioAutenticado } from '../comum/decoradores.js';
 import { producaoPorOrdem } from '../ordens/producao-ordem.js';
-import { emitirEtiquetas, proximoNumeroLote, type NovaEtiqueta } from '../etiquetas/emissao.js';
+import { emitirEtiquetas, type NovaEtiqueta } from '../etiquetas/emissao.js';
 import { baixarLote, resolverLote } from '../materia-prima/materia-prima.service.js';
 
 /** Eventos de saldo solto: só são gerados pela abertura de divisão e pelo fechamento do turno. */
@@ -535,107 +537,72 @@ export class EventosService {
     dados: Record<string, unknown>,
     tipoPerda: string,
   ) {
-    if (!divisao) return [];
+    if (!divisao || entrada.tipo === 'SALDO_AVULSO_DEIXADO' || entrada.tipo === 'SALDO_AVULSO_RECEBIDO')
+      return [];
     const base = { eventoId, divisaoId: divisao.id, turnoId: ctx.turno.id };
-    const itens: NovaEtiqueta[] = [];
-    if (entrada.tipo === 'SAIDA_PRODUCAO') {
-      const conjuntos =
-        (dados.conjuntos as { numero: number; quantidade: number; avulso: boolean }[] | undefined) ?? [];
-      if (conjuntos.length) {
-        conjuntos.forEach((c) =>
-          itens.push({
-            ...base,
-            tipo: 'PRODUTO',
-            produtoId: divisao.ordem.produtoId,
-            quantidade: c.quantidade,
-            unidade: 'PECA',
-            pesoKg: dados.pesoMedioG ? arred((Number(dados.pesoMedioG) * c.quantidade) / 1000) : null,
-            avulso: c.avulso,
-            numeroNoLancamento: c.numero,
-            totalNoLancamento: conjuntos.length,
-            dados: { embalagem: String(dados.tipoEmbalagem ?? '') },
-          }),
-        );
-      } else {
-        // Extrusão: os volumes da divisão formam um lote de extrusado.
-        let lote = await tx.loteMaterial.findFirst({ where: { divisaoId: divisao.id } });
-        const volumes = (dados.volumes as { tipoVolume: string; pesoKg: number }[]) ?? [];
-        const total = arred(volumes.reduce((s, v) => s + v.pesoKg, 0));
-        if (!lote) {
-          lote = await tx.loteMaterial.create({
-            data: {
-              numero: await proximoNumeroLote(tx),
-              materialId: divisao.ordem.produtoId,
-              origem: 'EXTRUSAO',
-              quantidadeInicial: 0,
-              indiceFluidez: (dados.indiceFluidez as number | null) ?? null,
-              cor: divisao.ordem.produto.cor,
-              ordemExtrusaoId: divisao.ordemId,
-              divisaoId: divisao.id,
-              criadoPorId: ctx.usuario.id,
-            },
-          });
-        }
-        lote = await tx.loteMaterial.update({
-          where: { id: lote.id },
-          data: {
-            quantidadeInicial: { increment: total },
-            ...(dados.indiceFluidez ? { indiceFluidez: dados.indiceFluidez as number } : {}),
-          },
-        });
-        const destinos = await tx.produto.findMany({
+    const extrusao = entrada.tipo === 'SAIDA_PRODUCAO' && !(dados.conjuntos as unknown[] | undefined)?.length;
+    const destinos = extrusao
+      ? await tx.produto.findMany({
           where: { id: { in: (dados.produtosDestino as string[]) ?? [] } },
           select: { codigo: true },
+        })
+      : [];
+    // Mesmo cálculo do tablet (offline): a etiqueta gravada é a que foi impressa.
+    const planejadas = planejarEtiquetas(entrada as EventoEntrada, {
+      conjunto: extrusao
+        ? null
+        : {
+            quantidade: Number(dados.quantidadePorConjunto ?? 0),
+            tipoEmbalagem: String(dados.tipoEmbalagem ?? ''),
+          },
+      maquinaCodigo,
+      divisaoCodigo: divisao.codigo,
+      tipoPerda,
+      destinos: destinos.map((d) => d.codigo).join(', '),
+      maquinaDestino: dados.maquinaDestino as string | undefined,
+      divisaoDestinoCodigo: dados.codigoDivisaoDestino as string | undefined,
+    });
+    let loteId: string | null = null;
+    if (extrusao && planejadas.length) {
+      // Extrusão: os volumes da divisão formam um lote de extrusado (número determinado pela divisão).
+      const total = arred(planejadas.reduce((s, v) => s + v.quantidade, 0));
+      let lote = await tx.loteMaterial.findFirst({ where: { divisaoId: divisao.id } });
+      if (!lote) {
+        lote = await tx.loteMaterial.create({
+          data: {
+            numero: numeroLoteExtrusao(divisao.codigo),
+            materialId: divisao.ordem.produtoId,
+            origem: 'EXTRUSAO',
+            quantidadeInicial: 0,
+            indiceFluidez: (dados.indiceFluidez as number | null) ?? null,
+            cor: divisao.ordem.produto.cor,
+            ordemExtrusaoId: divisao.ordemId,
+            divisaoId: divisao.id,
+            criadoPorId: ctx.usuario.id,
+          },
         });
-        volumes.forEach((v, i) =>
-          itens.push({
-            ...base,
-            tipo: 'EXTRUSAO',
-            produtoId: divisao.ordem.produtoId,
-            quantidade: v.pesoKg,
-            unidade: 'KG',
-            pesoKg: v.pesoKg,
-            loteId: lote.id,
-            numeroNoLancamento: i + 1,
-            totalNoLancamento: volumes.length,
-            dados: {
-              operador: String(dados.operador ?? ''),
-              destinos: destinos.map((d) => d.codigo).join(', '),
-              tipoVolume: v.tipoVolume,
-            },
-          }),
-        );
       }
-    } else if (entrada.tipo === 'PERDA') {
-      const peso = dados.pesoKg as number | null;
-      const pecas = dados.quantidadePecas as number | null;
-      itens.push({
-        ...base,
-        tipo: 'PERDA',
-        produtoId: divisao.ordem.produtoId,
-        quantidade: peso ?? pecas ?? 0,
-        unidade: peso != null ? 'KG' : 'PECA',
-        pesoKg: peso,
-        dados: { tipoPerda, quantidadePecas: pecas },
-      });
-    } else if (entrada.tipo === 'DEVOLUCAO_MATERIA_PRIMA' || entrada.tipo === 'TRANSFERENCIA') {
-      const devolucao = entrada.tipo === 'DEVOLUCAO_MATERIA_PRIMA';
-      itens.push({
-        ...base,
-        tipo: 'DEVOLUCAO_TRANSFERENCIA',
-        produtoId: dados.materialId as string,
-        quantidade: entrada.quantidadeKg,
-        unidade: 'KG',
-        pesoKg: entrada.quantidadeKg,
-        loteId: dados.loteId as string,
-        dados: {
-          operacao: devolucao ? 'DEVOLUÇÃO' : 'TRANSFERÊNCIA',
-          origem: `${maquinaCodigo} · ${divisao.codigo}`,
-          destino: devolucao ? 'Matéria-prima' : `${dados.maquinaDestino} · ${dados.codigoDivisaoDestino}`,
+      await tx.loteMaterial.update({
+        where: { id: lote.id },
+        data: {
+          quantidadeInicial: { increment: total },
+          ...(dados.indiceFluidez ? { indiceFluidez: dados.indiceFluidez as number } : {}),
         },
       });
+      loteId = lote.id;
     }
-    const criadas = await emitirEtiquetas(tx, ctx.postoId, ctx.usuario.id, itens);
+    const devTransf = entrada.tipo === 'DEVOLUCAO_MATERIA_PRIMA' || entrada.tipo === 'TRANSFERENCIA';
+    const itens: NovaEtiqueta[] = planejadas.map((p) => ({
+      ...base,
+      ...p,
+      produtoId: devTransf ? (dados.materialId as string) : divisao.ordem.produtoId,
+      loteId: devTransf ? (dados.loteId as string) : loteId,
+    }));
+    const criadas = await emitirEtiquetas(tx, ctx.postoId, ctx.usuario.id, itens, {
+      sequencias: 'sequencias' in entrada ? (entrada.sequencias ?? null) : null,
+      aparelho: ctx.dispositivo,
+      emitidaEm: ctx.agora,
+    });
     return criadas.map((e) => ({ id: e.id, codigo: e.codigo }));
   }
 

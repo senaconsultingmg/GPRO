@@ -25,6 +25,13 @@ export const PARAMETROS_INICIAIS: DefinicaoParametro[] = [
     descricao: 'Etiquetas exibidas na tela de recebimento do estoque (RN-12).',
   },
   {
+    chave: 'tamanho_bloco_etiquetas',
+    valorInicial: '1000',
+    tipo: 'INTEIRO',
+    descricao:
+      'Quantidade de números de etiqueta reservada por vez para cada tablet usar sem conexão (seção 11). Um novo bloco é reservado quando restam menos de 20%.',
+  },
+  {
     chave: 'alerta_diferenca_relogio_min',
     valorInicial: '5',
     tipo: 'INTEIRO',

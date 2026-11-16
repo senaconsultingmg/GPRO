@@ -13,12 +13,15 @@ import {
 } from '@mantine/core';
 import { IconDeviceTablet } from '@tabler/icons-react';
 import { lerPosto, salvarPosto } from '../api/posto';
+import { atualizarPacote } from '../offline/pacote';
+import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
 import { testarAgente } from '../api/impressao';
 import { useLista } from '../componentes/PaginaCadastro';
 import { notificarSucesso } from '../componentes/utilitarios';
 
 /** Configurar este posto: dispositivo (prefixo das etiquetas) e agente de impressão da rede local. */
 export function PaginaPosto() {
+  const { pode } = useAutenticacao();
   const { data: dispositivos = [] } = useLista('dispositivos', true);
   const inicial = lerPosto();
   const [postoId, setPostoId] = useState<string | null>(inicial.postoId);
@@ -82,6 +85,8 @@ export function PaginaPosto() {
               onClick={() => {
                 salvarPosto({ postoId, agenteUrl, agenteToken });
                 notificarSucesso('Configuração do posto salva.');
+                // Seção 11: baixa os dados e reserva os números de etiqueta deste posto.
+                if (pode('offline.sincronizar')) void atualizarPacote();
               }}
             >
               Salvar

@@ -25,6 +25,7 @@ import { IconPencil, IconPlus, IconSearch } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ROTULO_DIA_SEMANA, type Permissao } from '@apontamento/shared';
 import type { ZodType } from 'zod';
+import { consultarComCache, listaDoPacote } from '../offline/pacote';
 import { api } from '../api/cliente';
 import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
 import { ListaParametrosLivres, type ItemParametro } from './ListaParametrosLivres';
@@ -100,7 +101,15 @@ function normalizar(campos: Campo[], v: Valores): Valores {
 export function useLista<T = Registro>(rota: string, apenasAtivos = false) {
   return useQuery({
     queryKey: [rota, apenasAtivos ? 'ativos' : 'todos'],
-    queryFn: () => api.get<T[]>(`/${rota}${apenasAtivos ? '?ativos=true' : ''}`),
+    // Cópia no tablet: sem servidor, as listas (motivos, tipos de perda, conjuntos...) seguem disponíveis.
+    queryFn: () =>
+      consultarComCache(`lista:${rota}:${apenasAtivos}`, () =>
+        api.get<T[]>(`/${rota}${apenasAtivos ? '?ativos=true' : ''}`),
+      ).catch(async (e) => {
+        const doPacote = await listaDoPacote(rota);
+        if (doPacote) return doPacote as T[];
+        throw e;
+      }),
   });
 }
 

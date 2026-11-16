@@ -14,10 +14,11 @@ import {
   Stack,
   Table,
   Text,
+  Textarea,
   Title,
 } from '@mantine/core';
 import { IconAlertTriangle, IconPrinter } from '@tabler/icons-react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import {
   formatarDataCivil,
@@ -34,7 +35,7 @@ import { useAutenticacao } from '../autenticacao/ContextoAutenticacao';
 import { ListaLancamentos } from './apontamento/ListaLancamentos';
 import type { TurnoDetalhe } from './apontamento/tipos';
 import { AprovarRelatorio } from './Aprovacoes';
-import { AlertaErroApi, fmtNumero } from '../componentes/utilitarios';
+import { AlertaErroApi, fmtNumero, notificarSucesso } from '../componentes/utilitarios';
 
 interface TurnoLista {
   id: string;
@@ -214,11 +215,49 @@ function Indicador({ rotulo, valor, destaque }: { rotulo: string; valor: string;
   );
 }
 
+/** Seção 11: o tablet do turno tem fila não enviada e não pode se conectar (ex.: quebrou). */
+function LiberarTroca({ turnoId, aoConcluir }: { turnoId: string; aoConcluir: () => void }) {
+  const [justificativa, setJustificativa] = useState('');
+  const liberar = useMutation({
+    mutationFn: () => api.post(`/turnos/${turnoId}/liberar-aparelho`, { justificativa }),
+    onSuccess: () => {
+      notificarSucesso('Troca liberada: o apontador pode continuar o turno em outro tablet.');
+      aoConcluir();
+    },
+  });
+  return (
+    <Stack>
+      <Alert color="orange">
+        Os lançamentos que ficaram no tablet antigo e não foram enviados não chegam ao servidor. Use só quando
+        aquele tablet não puder mais se conectar.
+      </Alert>
+      <Textarea
+        label="Justificativa"
+        withAsterisk
+        value={justificativa}
+        onChange={(e) => setJustificativa(e.currentTarget.value)}
+      />
+      <AlertaErroApi erro={liberar.error} />
+      <Group justify="flex-end">
+        <Button
+          color="orange"
+          disabled={justificativa.trim().length < 5}
+          loading={liberar.isPending}
+          onClick={() => liberar.mutate()}
+        >
+          Liberar troca
+        </Button>
+      </Group>
+    </Stack>
+  );
+}
+
 /** Relatório do turno (RN-13). */
 export function PaginaRelatorioTurno() {
   const { id } = useParams();
   const { pode } = useAutenticacao();
   const [aprovando, setAprovando] = useState(false);
+  const [liberando, setLiberando] = useState(false);
   const {
     data: r,
     error,
@@ -253,6 +292,11 @@ export function PaginaRelatorioTurno() {
           </Text>
         </div>
         <Group>
+          {r.turno.situacao === 'ABERTO' && pode('aprovacoes.decidir') && (
+            <Button variant="light" color="orange" onClick={() => setLiberando(true)}>
+              Liberar troca de tablet
+            </Button>
+          )}
           {r.turno.situacao === 'FECHADO' && pode('aprovacoes.decidir') && (
             <Button color="green" disabled={r.pendencias.length > 0} onClick={() => setAprovando(true)}>
               Aprovar relatório
@@ -535,6 +579,13 @@ export function PaginaRelatorioTurno() {
           <ListaLancamentos turno={d} />
         </Card>
       )}
+      <Modal
+        opened={liberando}
+        onClose={() => setLiberando(false)}
+        title={<Text fw={700}>Liberar troca de tablet</Text>}
+      >
+        {liberando && <LiberarTroca turnoId={r.turno.id} aoConcluir={() => setLiberando(false)} />}
+      </Modal>
       <Modal
         opened={aprovando}
         onClose={() => setAprovando(false)}

@@ -1,14 +1,61 @@
 # Progresso
 
-| Fase                                             | Situação     | Data       |
-| ------------------------------------------------ | ------------ | ---------- |
-| 1 — Fundação e cadastros                         | Concluída    | 15/11/2026 |
-| 2 — OPs, rodadas e apontamento                   | Concluída    | 15/11/2026 |
-| 3 — Etiquetas, matéria-prima e estoque           | Concluída    | 15/11/2026 |
-| 4 — Correções, aprovações, apuração e exportação | Concluída    | 15/11/2026 |
-| 5 — Painéis e indicadores                        | Concluída    | 15/11/2026 |
-| 6 — Manutenção                                   | Concluída    | 15/11/2026 |
-| 7 — Offline e implantação                        | Não iniciada |            |
+| Fase                                             | Situação  | Data       |
+| ------------------------------------------------ | --------- | ---------- |
+| 1 — Fundação e cadastros                         | Concluída | 15/11/2026 |
+| 2 — OPs, rodadas e apontamento                   | Concluída | 15/11/2026 |
+| 3 — Etiquetas, matéria-prima e estoque           | Concluída | 15/11/2026 |
+| 4 — Correções, aprovações, apuração e exportação | Concluída | 15/11/2026 |
+| 5 — Painéis e indicadores                        | Concluída | 15/11/2026 |
+| 6 — Manutenção                                   | Concluída | 15/11/2026 |
+| 7 — Offline e implantação                        | Concluída | 16/11/2026 |
+
+## Fase 7 — Offline e implantação
+
+### O que foi feito
+
+**`packages/shared`**: estado da máquina, cálculo das etiquetas de cada lançamento e valores impressos passaram a ser funções compartilhadas (servidor e tablet usam as mesmas); regras dos blocos de numeração; campos opcionais de identificador e hora do tablet nos esquemas; esquemas de estado da fila, recusados e impressões offline; parâmetro `tamanho_bloco_etiquetas`; permissões novas.
+
+**API**
+
+- Migration `fase7_offline`: blocos de numeração por posto e tablet, lançamentos recusados, estado da fila por tablet e turno, alertas de relógio e liberação de troca de tablet no turno.
+- Abrir turno, ligar máquina, criar divisão, lançar e fechar aceitam o identificador e a hora do tablet e não duplicam no reenvio; etiquetas usam os números do bloco do tablet (conferidos) e a data do tablet.
+- `GET /offline/pacote` (tudo para trabalhar sem servidor), `POST /offline/blocos`, `POST /offline/estado-fila`, recusados (registrar, listar, descartar, ligar ao relançamento), `POST /offline/impressoes`, alertas de relógio (verificação em toda requisição do tablet).
+- Um turno, um dispositivo: troca automática quando o tablet anterior informou fila vazia; senão, só com liberação do líder. Relatório bloqueado enquanto houver fila pendente do turno (P17).
+
+**Front-end**
+
+- Aplicativo instalável (PWA) com telas guardadas no aparelho; ícones e manifesto.
+- Banco local no tablet (IndexedDB/Dexie): pacote, numeração, fila de envio, etiquetas emitidas offline e resultados de impressão.
+- O apontamento grava primeiro no tablet e envia em seguida; sem conexão, o turno é projetado com os itens da fila (máquinas, divisões com código provisório, lançamentos "Aguardando envio", estado das máquinas) e as etiquetas são montadas e impressas pelo agente local.
+- Indicador sempre visível: conectado/sem conexão, quantos aguardam envio e recusados.
+- Telas novas: Lançamentos recusados (relançar corrigido ou descartar) e Alertas de relógio; botão "Liberar troca de tablet" no relatório do turno aberto.
+
+**Implantação**: serviço `backup` no compose (diário, retenção configurável), `scripts/backup.sh` e `scripts/restaurar.sh`, rota de tempo real sem buffer no nginx, guia `docs/INSTALACAO.md` (servidor local, nuvem com HTTPS, agente, tablets, backup, restauração, problemas comuns) e `docs/MANUAL.md` (manual rápido por perfil).
+
+### Critérios de aceite
+
+| Critério                                                                                                                     | Como foi verificado                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Com a rede do servidor desligada, o apontador lança um turno inteiro e imprime etiquetas; ao religar, tudo sobe sem duplicar | Ponta a ponta (`fase7.spec.ts`): com a API bloqueada no navegador, o apontador abre o turno, liga a INJ-01, cria as 3 divisões (códigos provisórios), lança produção (2 etiquetas chegam à impressora simulada pelo agente), parada e reinício e fecha o turno; a fila mostra 9 itens. Ao religar, a fila sobe sozinha; no servidor: turno fechado com 1 início, 1 saída, 1 fim e 3 divisões; as 2 etiquetas impressas existem com o mesmo código, ligadas ao turno, e sem impressão pendente. Integração (`fase7.test.ts`): reenvio de abertura, ligação, divisão, lançamento e fechamento não duplica; horas do tablet gravadas como hora do registro e da etiqueta, com a hora de recebimento do servidor à parte. Todos os testes ponta a ponta anteriores passam com o novo fluxo (gravar no tablet e enviar). |
+| Dois tablets offline emitem etiquetas sem código repetido                                                                    | Ponta a ponta: dois navegadores (apontadores diferentes) configurados **no mesmo posto T1**, ambos offline, emitem 6 etiquetas intercaladas: 6 códigos distintos, todos subiram ao religar. Integração: cada tablet usa o seu bloco; número fora do bloco do tablet ou já usado é recusado; o servidor emite fora dos blocos reservados. Unitários: sequência dentro dos blocos e pedido de novo bloco abaixo de 20%.                                                                                                                                                                                                                                                                                                                                                                                               |
+| Evento recusado na sincronização aparece na lista de recusados                                                               | Ponta a ponta: com o tablet offline, o PCP encerra a OP; a produção lançada nessa OP é recusada ao sincronizar, aparece o aviso "1 recusado(s)" e o item está em Lançamentos recusados com o motivo; o descarte exige justificativa e fica em "Descartados". Integração: registro idempotente, visibilidade (apontador só os seus, líder todos), descarte auditado.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| O backup é restaurado com sucesso em uma instalação limpa, seguindo apenas o guia                                            | Docker, seguindo `docs/INSTALACAO.md`: OP marcadora criada, backup gerado com `docker compose exec backup /scripts/backup.sh agora`; `docker compose down -v` (banco apagado), subida limpa sem dados de exemplo (login recusado: banco vazio), `sh scripts/restaurar.sh backups/…dump`: login volta a funcionar, a OP marcadora está lá e não há migrations pendentes.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+### Resultado das verificações finais
+
+- Migrations sem pendências; aplicadas do zero nos bancos de teste, e2e e Docker.
+- Testes: shared 92/92, API 121/121, agente 4/4, web 5/5, ponta a ponta 24/24 (Fases 1 a 7).
+- Lint sem problemas, Prettier sem diferenças, typecheck sem erros.
+- Docker: 5 serviços (banco, API, web, agente, backup); manifesto e service worker servidos pela imagem web; o aplicativo abre com a rede desligada (verificado no navegador).
+
+### Pendências e observações
+
+- O tablet precisa ter ficado online ao menos uma vez antes de trabalhar offline (para baixar o pacote e reservar números); sem isso, lançamentos com etiqueta são recusados no próprio tablet com mensagem clara.
+- Correção e relançamento de recusados exigem conexão (decisões do líder e do servidor).
+- O aviso de troca automática de aparelho depende do último estado de fila informado; tablets sem informação (anteriores à Fase 7) são tratados como fila vazia.
+- Impressão HTTPS do agente com a aplicação na nuvem exige certificado confiável nos tablets (ver guia).
+- Envio do repositório para um servidor remoto (GitHub) ainda não foi feito: os commits estão só no ambiente de desenvolvimento.
 
 ## Fase 6 — Manutenção
 

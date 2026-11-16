@@ -62,5 +62,26 @@ services:
     ports:
       - '${PORTA_AGENTE:-9180}:9180'
 
+  # Backup diário do banco (ver docs/INSTALACAO.md). Os arquivos ficam na pasta BACKUP_PASTA do servidor:
+  # copie-os para fora dele (outro computador, nuvem ou disco externo).
+  backup:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER:-apontamento}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apontamento}
+      POSTGRES_DB: ${POSTGRES_DB:-apontamento}
+      BACKUP_HORA: ${BACKUP_HORA:-02:00}
+      RETENCAO_DIAS: ${RETENCAO_DIAS:-14}
+      TZ: America/Sao_Paulo
+    volumes:
+      - ${BACKUP_PASTA:-./backups}:/backups
+      - ./scripts/backup.sh:/scripts/backup.sh:ro
+    entrypoint: ['sh', '/scripts/backup.sh']
+
 volumes:
   dados-banco:

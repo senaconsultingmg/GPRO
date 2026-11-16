@@ -40,7 +40,12 @@ import {
   ROTULO_UNIDADE,
   usaMolde,
 } from '@apontamento/shared';
-import { api } from '../../api/cliente';
+import { api, ErroApi } from '../../api/cliente';
+import * as acoes from '../../offline/acoes';
+import { useSincronizacao } from '../../offline/estado';
+import { itensDoUsuario, pendentesDoTurno } from '../../offline/fila';
+import { atualizarPacote, consultarComCache, lerPacote, semConexao } from '../../offline/pacote';
+import { projetarTurno } from '../../offline/projecao';
 import { useLista } from '../../componentes/PaginaCadastro';
 import { AlertaErroApi, fmtNumero, notificarSucesso } from '../../componentes/utilitarios';
 import { ListaLancamentos } from './ListaLancamentos';
@@ -72,8 +77,20 @@ function AbrirTurno() {
   const { data: equipes = [] } = useLista('equipes', true);
   const sugestao = useQuery({
     queryKey: ['turnos', 'sugestao'],
-    queryFn: () =>
-      api.get<{ data: string; horarioTurnoId: string | null; equipeId: string | null }>('/turnos/sugestao'),
+    queryFn: async () => {
+      try {
+        return await consultarComCache('sugestao', () =>
+          api.get<{ data: string; horarioTurnoId: string | null; equipeId: string | null }>(
+            '/turnos/sugestao',
+          ),
+        );
+      } catch (e) {
+        // Sem servidor e sem cópia: usa a sugestão do pacote do tablet.
+        const p = await lerPacote();
+        if (p) return p.sugestao;
+        throw e;
+      }
+    },
   });
   const [valores, setValores] = useState<{
     data: string | null;
@@ -82,10 +99,10 @@ function AbrirTurno() {
   } | null>(null);
   const v = valores ?? sugestao.data ?? null;
   const abrir = useMutation({
-    mutationFn: () => api.post('/turnos', v),
-    onSuccess: () => {
+    mutationFn: () => acoes.abrirTurno(v as { data: string; horarioTurnoId: string; equipeId: string }),
+    onSuccess: (r) => {
       cliente.invalidateQueries({ queryKey: ['turno'] });
-      notificarSucesso('Turno aberto.');
+      if (r.enviado) notificarSucesso('Turno aberto.');
     },
   });
   if (!v) return <Loader />;
@@ -306,16 +323,50 @@ function CartaoMaquina({
 
 export function PaginaApontamento() {
   const navegar = useNavigate();
+  // Seção 11: o turno vem do servidor (ou da última cópia) mais o que está na fila do tablet.
+  const { versao } = useSincronizacao();
+  // Ao abrir o apontamento com conexão, atualiza o pacote do tablet (dados e números de etiqueta).
+  useEffect(() => {
+    void atualizarPacote();
+  }, []);
   const meu = useQuery({
-    queryKey: ['turno', 'meu'],
-    queryFn: () => api.get<{ id: string | null }>('/turnos/meu-aberto'),
+    queryKey: ['turno', 'meu', versao],
+    queryFn: async () => {
+      const itens = await itensDoUsuario();
+      let r: { id: string | null } = { id: null };
+      try {
+        r = await consultarComCache('meu-aberto', () => api.get<{ id: string | null }>('/turnos/meu-aberto'));
+      } catch {
+        /* sem servidor e sem cópia */
+      }
+      const fechadoNoTablet = (id: string) =>
+        itens.some((i) => i.tipo === 'FECHAR_TURNO' && i.turnoId === id);
+      if (r.id && !fechadoNoTablet(r.id)) return r;
+      const abertura = [...itens]
+        .reverse()
+        .find((i) => i.tipo === 'ABRIR_TURNO' && !fechadoNoTablet(i.turnoId));
+      return { id: abertura?.turnoId ?? null };
+    },
+    placeholderData: (anterior) => anterior,
   });
   const turnoId = meu.data?.id ?? null;
   const detalhe = useQuery({
-    queryKey: ['turno', turnoId],
-    queryFn: () => api.get<TurnoDetalhe>(`/turnos/${turnoId}`),
+    queryKey: ['turno', turnoId, versao],
+    queryFn: async () => {
+      let base: TurnoDetalhe | null = null;
+      try {
+        base = await consultarComCache(`turno:${turnoId}`, () => api.get<TurnoDetalhe>(`/turnos/${turnoId}`));
+      } catch (e) {
+        // 404: turno aberto neste tablet e ainda não enviado.
+        if (!semConexao(e) && !(e instanceof ErroApi && e.status === 404)) throw e;
+      }
+      const t = projetarTurno(base, await pendentesDoTurno(turnoId!), await lerPacote());
+      if (!t) throw new ErroApi(0, 'Turno ainda não disponível neste tablet.');
+      return t;
+    },
     enabled: !!turnoId,
     refetchInterval: 30_000,
+    placeholderData: (anterior) => anterior,
   });
   const [lancando, setLancando] = useState<{ maquinaId: string; tipo: TipoLancamento } | null>(null);
   const [ligando, setLigando] = useState(false);
@@ -449,7 +500,9 @@ export function PaginaApontamento() {
           <Fechamento
             turno={turno}
             aoFechar={() => setFechando(false)}
-            aoConcluir={() => navegar(`/turnos/${turno.id}/relatorio`)}
+            aoConcluir={(enviado) =>
+              enviado ? navegar(`/turnos/${turno.id}/relatorio`) : setFechando(false)
+            }
           />
         )}
       </Modal>

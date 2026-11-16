@@ -14,6 +14,9 @@ import '@mantine/charts/styles.css';
 import type { Permissao } from '@apontamento/shared';
 import { ProvedorAutenticacao, useAutenticacao } from './autenticacao/ContextoAutenticacao';
 import { Layout } from './Layout';
+import { definirClienteConsultas } from './offline/fila';
+import { PaginaRecusados } from './paginas/Recusados';
+import { PaginaAlertasRelogio } from './paginas/AlertasRelogio';
 import { PaginaLogin } from './paginas/Login';
 import { PaginaInicio } from './paginas/Inicio';
 import { PaginaMoldes } from './paginas/Moldes';
@@ -63,9 +66,15 @@ const tema = createTheme({
   },
 });
 
-const clienteConsultas = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } },
+export const clienteConsultas = new QueryClient({
+  // networkMode 'always': sem rede as consultas caem no cache do tablet (seção 11) em vez de ficarem paradas.
+  defaultOptions: {
+    queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false, networkMode: 'always' },
+    mutations: { networkMode: 'always' },
+  },
 });
+
+definirClienteConsultas(clienteConsultas);
 
 const CADASTROS: [string, ConfigCadastro, Permissao][] = [
   ['/maquinas', cfg.configMaquinas, 'cadastros.ler'],
@@ -244,6 +253,22 @@ function Aplicacao() {
           element={
             <Protegida permissao="manutencao.ler">
               <PaginaManutencao />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/recusados"
+          element={
+            <Protegida permissao="recusados.ler">
+              <PaginaRecusados />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/alertas-relogio"
+          element={
+            <Protegida permissao="alertas.relogio">
+              <PaginaAlertasRelogio />
             </Protegida>
           }
         />

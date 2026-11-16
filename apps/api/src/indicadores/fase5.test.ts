@@ -95,6 +95,10 @@ describe('Painéis e indicadores', () => {
 
     // Dia 1 (equipe A): ligada 10 h–22 h, refeição programada 14 h–15 h → planejado 11 h, produzindo 11 h.
     const a = await abrirTurno('2026-10-05', 'A', 10, 22);
+    await ctx.prisma.turnoApontamento.update({
+      where: { id: a.turno },
+      data: { horarioTurnoId: id['horario:Dia'] },
+    });
     await lancar(a.turno, {
       tipo: 'SAIDA_PRODUCAO',
       horaOcorrencia: iso('2026-10-05', 12),
